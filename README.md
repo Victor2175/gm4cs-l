@@ -1,2 +1,2 @@
-# gm4cs-l
-Generative models for Climate science
+# gm4cs
+Generative models for Climate science (semester project)
