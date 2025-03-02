@@ -96,7 +96,7 @@ def normalize_data(data):
 def reduced_rank_regression(X, y, rank):
 
     # Fit OLS
-    B_ols = np.linalg.inv(X.T @ X) @ X.T @ y # Analytical solution
+    B_ols = np.linalg.pinv(X.T @ X) @ X.T @ y # Analytical solution
 
     # Compute SVD
     U, s, Vt = np.linalg.svd(X @ B_ols, full_matrices=False)
