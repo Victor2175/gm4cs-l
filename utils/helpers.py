@@ -59,7 +59,7 @@ def create_nan_mask(filtered_data):
             nan_mask = nan_mask | np.any(np.isnan(filtered_data[model][run]), axis=0)
     return nan_mask
 
-def remove_nans(filtered_data, nan_mask):
+def remove_nans_1(filtered_data, nan_mask):
     """
     Remove NaN values from the data.
     Args:
@@ -148,6 +148,46 @@ def add_forced_response(data):
         data_with_forced_response[model]['forced_response'] = forced_response
     return data_with_forced_response
 
+def remove_nans(data, nan_mask):
+    """
+    Remove NaN values from the data matrices
+
+    Args:
+        data (dict): Dictionary containing the data.
+        nan_mask (np.ndarray): Boolean mask indicating NaN positions.
+        
+    Returns:
+        dict: Data with NaN values removed.
+    """
+    nan_mask_flat = nan_mask.flatten()
+    data_no_nans = {}
+    for model in data:
+        data_no_nans[model] = {}
+        for run in data[model]:
+            data_no_nans[model][run] = data[model][run][:, ~nan_mask_flat]
+    return data_no_nans
+
+def readd_nans(data, nan_mask):
+    """
+    Re-add NaN values to the data matrices for visualization purposes.
+    
+    Args:
+        data (dict): Dictionary containing the normalized data.
+        nan_mask (np.ndarray): Boolean mask indicating NaN positions.
+        
+    Returns:
+        dict: Data with NaN values re-added.
+    """
+    nan_mask_flat = nan_mask.flatten()
+    data_with_nans = {}
+    for model in data:
+        data_with_nans[model] = {}
+        for run in data[model]:
+            reshaped_run = np.full((data[model][run].shape[0], nan_mask_flat.shape[0]), np.nan)
+            reshaped_run[:, ~nan_mask_flat] = data[model][run]
+            data_with_nans[model][run] = reshaped_run
+    return data_with_nans
+
 def normalize_data(train_data, test_data):
     """
     Normalize the data using the mean and standard deviation of each model (for the training set)
@@ -218,7 +258,7 @@ def normalize_data(train_data, test_data):
         
     return normalized_train_data, normalized_test_data, training_statistics, testing_statistics
 
-def reduced_rank_regression(X, y, rank):
+def reduced_rank_regression(X, y, rank, lambda_):
     """
     Performs Reduced Rank Regression (RRR).
 
@@ -231,10 +271,12 @@ def reduced_rank_regression(X, y, rank):
     """
 
     # Fit OLS
-    B_ols = np.linalg.pinv(X.T @ X) @ X.T @ y # Analytical solution (pseudo inverse)
-
+    identity = np.eye(X.shape[1])
+    B_ols = np.linalg.inv(X.T @ X + lambda_ * identity) @ X.T @ y # Analytical solution (pseudo inverse)
+    print(f"B_ols shape: {B_ols.shape}")
     # Compute SVD
     U, s, Vt = np.linalg.svd(X @ B_ols, full_matrices=False)
+      
 
     # Truncate SVD to rank
     U_r = U[:, :rank]
@@ -242,7 +284,7 @@ def reduced_rank_regression(X, y, rank):
     Vt_r = Vt[:rank, :]
 
     # Compute B_rrr
-    B_rrr = B_ols @ Vt_r @ Vt_r.T # Reduced-rank weight matrix
+    B_rrr = B_ols @ Vt_r.T @ Vt_r # Reduced-rank weight matrix
 
     return B_rrr
 
