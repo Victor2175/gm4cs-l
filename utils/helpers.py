@@ -167,26 +167,35 @@ def remove_nans(data, nan_mask):
             data_no_nans[model][run] = data[model][run][:, ~nan_mask_flat]
     return data_no_nans
 
-def readd_nans(data, nan_mask):
+def readd_nans(data, nan_mask, predictions=False):
     """
     Re-add NaN values to the data matrices for visualization purposes.
     
     Args:
-        data (dict): Dictionary containing the normalized data.
+        data (dict or np.ndarray): Dictionary containing the normalized data or a simple array if predictions is True.
         nan_mask (np.ndarray): Boolean mask indicating NaN positions.
+        predictions (bool): Flag indicating if the data is a simple array (True) or a dictionary (False).
         
     Returns:
-        dict: Data with NaN values re-added.
+        dict or np.ndarray: Data with NaN values re-added.
     """
     nan_mask_flat = nan_mask.flatten()
-    data_with_nans = {}
-    for model in data:
-        data_with_nans[model] = {}
-        for run in data[model]:
-            reshaped_run = np.full((data[model][run].shape[0], nan_mask_flat.shape[0]), np.nan)
-            reshaped_run[:, ~nan_mask_flat] = data[model][run]
-            data_with_nans[model][run] = reshaped_run
-    return data_with_nans
+    
+    if predictions:
+        # Handle the case where data is a simple array
+        reshaped_data = np.full((data.shape[0], nan_mask_flat.shape[0]), np.nan)
+        reshaped_data[:, ~nan_mask_flat] = data
+        return reshaped_data
+    else:
+        # Handle the case where data is a dictionary
+        data_with_nans = {}
+        for model in data:
+            data_with_nans[model] = {}
+            for run in data[model]:
+                reshaped_run = np.full((data[model][run].shape[0], nan_mask_flat.shape[0]), np.nan)
+                reshaped_run[:, ~nan_mask_flat] = data[model][run]
+                data_with_nans[model][run] = reshaped_run
+        return data_with_nans
 
 def normalize_data(train_data, test_data):
     """
@@ -273,7 +282,6 @@ def reduced_rank_regression(X, y, rank, lambda_):
     # Fit OLS
     identity = np.eye(X.shape[1])
     B_ols = np.linalg.inv(X.T @ X + lambda_ * identity) @ X.T @ y # Analytical solution (pseudo inverse)
-    print(f"B_ols shape: {B_ols.shape}")
     # Compute SVD
     U, s, Vt = np.linalg.svd(X @ B_ols, full_matrices=False)
       
