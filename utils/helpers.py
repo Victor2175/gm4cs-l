@@ -14,11 +14,29 @@ from sklearn.preprocessing import StandardScaler
 ### Data Loading and Preprocessing ###
 
 def load_data(data_path, filename):
+    """
+    Load data from a pickle file.
+    Args:
+        data_path (_type_): _description_
+        filename (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
     with open(os.path.join(data_path, filename), 'rb') as f:
         data = pkl.load(f)
     return data
 
 def filter_data(data, min_runs=4):
+    """
+    Filter data to keep only models with at least min_runs runs.
+    Args:
+        data (dict): Dictionary containing the data.
+        min_runs (int): Minimum number of runs to keep a model.
+    
+    Returns:
+        dict: Filtered data.
+    """
     filtered_data = {
         model: {run: np.flip(data[model][run], axis=1) for run in data[model]}
         for model in data.keys() if len(data[model]) >= min_runs
@@ -26,6 +44,14 @@ def filter_data(data, min_runs=4):
     return filtered_data
 
 def create_nan_mask(filtered_data):
+    """
+    Create a mask to identify NaN values in the data.
+    Args:
+        filtered_data (dict): Filtered data.
+        
+    Returns:
+        np.array: Boolean mask with True values for NaN values.
+    """
     grid_shape = filtered_data[list(filtered_data.keys())[0]][list(filtered_data[list(filtered_data.keys())[0]].keys())[0]].shape[1:]
     nan_mask = np.zeros(grid_shape, dtype=bool)
     for model in tqdm(filtered_data):
@@ -34,6 +60,15 @@ def create_nan_mask(filtered_data):
     return nan_mask
 
 def remove_nans(filtered_data, nan_mask):
+    """
+    Remove NaN values from the data.
+    Args:
+        filtered_data (dict): Filtered data.
+        nan_mask (np.array): Boolean mask with True values for NaN values.
+        
+    Returns:
+        dict: Data with NaN values replaced by 0.
+    """
     nan_filtered_data = filtered_data.copy()
     for model in tqdm(nan_filtered_data):
         for run in nan_filtered_data[model]:
@@ -41,6 +76,14 @@ def remove_nans(filtered_data, nan_mask):
     return nan_filtered_data
 
 def reshape_data(data):
+    """
+    Reshape data to have a 2D shape.
+    Args:
+        data (dict): Dictionary containing the data.
+        
+    Returns:
+        dict: Reshaped data.
+    """
     reshaped_data = {}
     for model in tqdm(data):
         reshaped_data[model] = {}
@@ -49,6 +92,14 @@ def reshape_data(data):
     return reshaped_data
 
 def center_data(filtered_data):
+    """
+    Center the data by removing the grid average.
+    Args:
+        filtered_data (dict): Filtered data.
+        
+    Returns:
+        dict: Centered data.
+    """
     centered_data = {}
     for model in tqdm(filtered_data):
         runs_stack = np.stack([filtered_data[model][run] for run in filtered_data[model]], axis=0)
@@ -59,6 +110,14 @@ def center_data(filtered_data):
     return centered_data
 
 def plot_time_series(time_series_data, forced_response_data, grid_spot, model_name):
+    """
+    Plot the time series data for a given grid spot.
+    Args:
+        time_series_data (dict): Dictionary containing the time series data.
+        forced_response_data (np.array): Forced response data.
+        grid_spot (tuple): Grid spot to plot.
+        model_name (str): Name of the model.
+    """
     plt.figure(figsize=(10, 6))
     for data in time_series_data.values():
         plt.plot(data, color='blue', alpha=0.5)
@@ -70,28 +129,94 @@ def plot_time_series(time_series_data, forced_response_data, grid_spot, model_na
     plt.show()
 
 ### Pre processing for the reduced rank regression ###
-def normalize_data(data):
-    # Stack all runs from all models to compute global mean and std
+def add_forced_response(data):
+    """
+    Add the forced response to the data.
+    
+    Args:
+        data (dict): Dictionary containing the data.
+        
+    Returns:
+    
+    dict: Data with the forced response added.
+    """
+    # We assume that the forced response is the average of all runs (for each model)
+    data_with_forced_response = data.copy()
+    for model in data_with_forced_response:
+        runs_stack = np.stack([data_with_forced_response[model][run] for run in data_with_forced_response[model]], axis=0)
+        forced_response = np.mean(runs_stack, axis=0)
+        data_with_forced_response[model]['forced_response'] = forced_response
+    return data_with_forced_response
+
+def normalize_data(train_data, test_data):
+    """
+    Normalize the data using the mean and standard deviation of each model (for the training set)
+    Then normalize the testing data using the mean and std calculated over all runs in the training set.
+    Args:
+        train_data (dict): Dictionary containing the training data.
+        test_data (dict): Dictionary containing the test data.
+        
+    Returns:
+        dict: Normalized training data.
+        dict: Normalized test data.
+        dict: Scalers used for normalization.
+    """
+    # Normalize training data using mean and std for each model separately
+    normalized_train_data = {}
+
+    training_statistics = {}
+    testing_statistics = {}
+    for model in tqdm(train_data):
+        all_runs = []
+        for run in train_data[model]:
+            all_runs.append(train_data[model][run])
+        all_runs_stack = np.stack(all_runs, axis=0) # Shape (# Runs x T x d)
+        
+        # Compute the mean and std for each grid square and each timestamp for the current model
+        mean_and_time = np.nanmean(all_runs_stack, axis=(0, 1)) # Shape (d,)
+        std_ = np.nanstd(all_runs_stack, axis=0) # Shape (T x d)
+        
+        training_statistics[model] = {}
+        training_statistics[model]['mean'] = mean_and_time
+        training_statistics[model]['std'] = std_
+        training_statistics[model]['model'] = model
+        
+        # Normalize the training data for the current model (including the forced response)
+        normalized_train_data[model] = {}
+        for run in train_data[model]:
+            normalized_train_data[model][run] = (train_data[model][run] - mean_and_time) / std_
+        normalized_train_data[model]['forced_response'] = (train_data[model]['forced_response'] - mean_and_time) / std_
+        
+    # Compute the mean and std for each grid square per time stamp but for all the models together
     all_runs = []
-    for model in data:
-        for run in data[model]:
-            all_runs.append(data[model][run])
-    all_runs_stack = np.concatenate(all_runs, axis=0)
+    for model in train_data:
+        for run in train_data[model]:
+            all_runs.append(train_data[model][run])
+    all_runs_stack = np.stack(all_runs, axis = 0)
     
-    # Compute mean and std for each grid square
-    scaler = StandardScaler()
-    scaler.fit(all_runs_stack)
+    full_mean_and_time = np.nanmean(all_runs_stack, axis=(0, 1)) # Shape (d,)
+    full_std = np.nanstd(all_runs_stack, axis=0) # Shape (T x d)
     
-    # Normalize data using the computed mean and std
-    normalized_data = {}
-    for model in tqdm(data):
-        normalized_data[model] = {}
-        for run in data[model]:
-            reshaped_run = data[model][run]
-            normalized_run = scaler.transform(reshaped_run)
-            normalized_data[model][run] = normalized_run
+    testing_statistics['mean'] = full_mean_and_time
+    testing_statistics['std'] = full_std
     
-    return normalized_data, scaler
+    # Normalize the test data using the computed mean and std for all models together
+    normalized_test_data = {}
+    for model in tqdm(test_data):
+        test_runs = []
+        normalized_test_data[model] = {}
+        for run in test_data[model]:
+            test_runs.append(test_data[model][run]) # Only used for computing the mean and std for the target (forced response)
+            normalized_test_data[model][run] = (test_data[model][run] - full_mean_and_time) / full_std
+        
+        test_runs_stack = np.stack(test_runs, axis=0) # Shape (# Runs x T x d)
+        test_mean = np.mean(test_runs_stack, axis=(0, 1)) # Shape (d,)
+        test_std = np.std(test_runs_stack, axis=0) # Shape (T x d)
+        
+        # Apply the test mean and std to the forced response (MUST NOT BE USED ON THE RUNS)
+        normalized_test_data[model]['forced_response'] = (test_data[model]['forced_response'] - test_mean) / test_std
+        
+    return normalized_train_data, normalized_test_data, training_statistics, testing_statistics
 
 def reduced_rank_regression(X, y, rank):
     """
@@ -121,16 +246,16 @@ def reduced_rank_regression(X, y, rank):
 
     return B_rrr
 
-def add_forced_response(data):
-    # We assume that the forced response is the average of all runs (for each model)
-    data_with_forced_response = data.copy()
-    for model in data_with_forced_response:
-        runs_stack = np.stack([data_with_forced_response[model][run] for run in data_with_forced_response[model]], axis=0)
-        forced_response = np.mean(runs_stack, axis=0)
-        data_with_forced_response[model]['forced_response'] = forced_response
-    return data_with_forced_response
-
 def pool_data(data):
+    """
+    Pool data from different models and runs.
+    Args:
+        data (dict): Dictionary containing the data.
+        
+    Returns:
+        np.array: Pooled input data.
+        np.array: Pooled output data.
+    """
     X_all = []
     Y_all = []
     for model in data:
