@@ -80,20 +80,30 @@ def normalize_data(data):
     
     # Compute mean and std for each grid square
     scaler = StandardScaler()
-    scaler.fit(all_runs_stack.reshape(-1, all_runs_stack.shape[-1]))
+    scaler.fit(all_runs_stack)
     
     # Normalize data using the computed mean and std
     normalized_data = {}
     for model in tqdm(data):
         normalized_data[model] = {}
         for run in data[model]:
-            reshaped_run = data[model][run].reshape(-1, data[model][run].shape[-1])
-            normalized_run = scaler.transform(reshaped_run).reshape(data[model][run].shape)
+            reshaped_run = data[model][run]
+            normalized_run = scaler.transform(reshaped_run)
             normalized_data[model][run] = normalized_run
     
     return normalized_data, scaler
 
 def reduced_rank_regression(X, y, rank):
+    """
+    Performs Reduced Rank Regression (RRR).
+
+    X_all: (M*n, p) Combined input dataset from multiple simulations.
+    Y_all: (M*n, q) Corresponding output responses.
+    rank: Desired rank for dimensionality reduction.
+    
+    Returns:
+    - B_rrr: (p, q) Reduced-rank weight matrix.
+    """
 
     # Fit OLS
     B_ols = np.linalg.pinv(X.T @ X) @ X.T @ y # Analytical solution
