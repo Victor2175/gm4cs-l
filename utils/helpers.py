@@ -106,7 +106,7 @@ def reduced_rank_regression(X, y, rank):
     """
 
     # Fit OLS
-    B_ols = np.linalg.pinv(X.T @ X) @ X.T @ y # Analytical solution
+    B_ols = np.linalg.pinv(X.T @ X) @ X.T @ y # Analytical solution (pseudo inverse)
 
     # Compute SVD
     U, s, Vt = np.linalg.svd(X @ B_ols, full_matrices=False)
@@ -117,7 +117,7 @@ def reduced_rank_regression(X, y, rank):
     Vt_r = Vt[:rank, :]
 
     # Compute B_rrr
-    B_rrr = U_r @ s_r @ Vt_r
+    B_rrr = B_ols @ Vt_r @ Vt_r.T # Reduced-rank weight matrix
 
     return B_rrr
 
