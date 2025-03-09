@@ -75,6 +75,22 @@ def remove_nans_1(filtered_data, nan_mask):
             nan_filtered_data[model][run][:, nan_mask] = np.nan
     return nan_filtered_data
 
+# def reshape_data(data):
+#     """
+#     Reshape data to have a 2D shape.
+#     Args:
+#         data (dict): Dictionary containing the data.
+        
+#     Returns:
+#         dict: Reshaped data.
+#     """
+#     reshaped_data = {}
+#     for model in tqdm(data):
+#         reshaped_data[model] = {}
+#         for run in data[model]:
+#             reshaped_data[model][run] = data[model][run].reshape(data[model][run].shape[0], -1)
+#     return reshaped_data
+
 def reshape_data(data):
     """
     Reshape data to have a 2D shape.
@@ -84,12 +100,13 @@ def reshape_data(data):
     Returns:
         dict: Reshaped data.
     """
-    reshaped_data = {}
-    for model in tqdm(data):
-        reshaped_data[model] = {}
-        for run in data[model]:
-            reshaped_data[model][run] = data[model][run].reshape(data[model][run].shape[0], -1)
-    return reshaped_data
+    return {
+        model: {
+            run: run_data.reshape(run_data.shape[0], -1)
+            for run, run_data in model_data.items()
+        }
+        for model, model_data in tqdm(data.items())
+    }
 
 def center_data(filtered_data):
     """
@@ -234,7 +251,7 @@ def normalize_data(train_data, test_data):
         normalized_train_data[model] = {}
         for run in train_data[model]:
             normalized_train_data[model][run] = (train_data[model][run] - mean_and_time) / std_
-        normalized_train_data[model]['forced_response'] = (train_data[model]['forced_response'] - mean_and_time) / std_
+        # normalized_train_data[model]['forced_response'] = (train_data[model]['forced_response'] - mean_and_time) / std_
         
     # Compute the mean and std for each grid square per time stamp but for all the models together
     all_runs = []
