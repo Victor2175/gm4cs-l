@@ -5,6 +5,7 @@ import random
 import pandas as pd
 from sklearn.linear_model import LinearRegression
 from sklearn.decomposition import TruncatedSVD
+from sklearn.metrics import mean_squared_error
 import matplotlib.pyplot as plt
 import seaborn as sns
 import random
@@ -333,7 +334,7 @@ def pool_data(data):
     Y_all = np.concatenate(Y_all, axis=0)
     return X_all, Y_all
 
-def calculate_mse(test_data, B_rrr):
+def calculate_mse(test_data, B_rrr, nan_mask, valid_indices):
     """
     Calculate the Mean Squared Error (MSE) for the test data.
     Args:
@@ -352,8 +353,8 @@ def calculate_mse(test_data, B_rrr):
     prediction = test_run @ B_rrr
 
     # Restore NaNs in the predicted matrix
-    prediction = restore_nan(prediction, nan_mask, valid_indices)
-    ground_truth = restore_nan(ground_truth, nan_mask, valid_indices)
+    prediction = readd_nans(prediction, nan_mask, valid_indices)
+    ground_truth = readd_nans(ground_truth, nan_mask, valid_indices)
 
     # Calculate MSE
     mse = mean_squared_error(ground_truth, prediction)
