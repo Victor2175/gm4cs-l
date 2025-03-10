@@ -236,7 +236,7 @@ def normalize_data(train_data, test_data):
     for model in tqdm(train_data):
         all_runs = []
         for run in train_data[model]:
-            all_runs.append(train_data[model][run])
+            all_runs.append(train_data[model][run]) # USE CONCATENATE (or torch.cat)
         all_runs_stack = np.stack(all_runs, axis=0) # Shape (# Runs x T x d)
         
         # Compute the mean and std for each grid square and each timestamp for the current model
@@ -299,20 +299,20 @@ def reduced_rank_regression(X, y, rank, lambda_):
 
     # Fit OLS
     identity = np.eye(X.shape[1])
-    B_ols = np.linalg.inv(X.T @ X + lambda_ * identity) @ X.T @ y # Analytical solution (pseudo inverse)
+    B_ols = np.linalg.inv(X.T @ X + lambda_ * identity) @ X.T @ y # Analytical solution of ridge regression (pseudo inverse)
     # Compute SVD
     U, s, Vt = np.linalg.svd(X @ B_ols, full_matrices=False)
-      
+    
 
     # Truncate SVD to rank
-    U_r = U[:, :rank]
-    s_r = np.diag(s[:rank])
+    # U_r = U[:, :rank]
+    # s_r = np.diag(s[:rank])
     Vt_r = Vt[:rank, :]
 
     # Compute B_rrr
     B_rrr = B_ols @ Vt_r.T @ Vt_r # Reduced-rank weight matrix
 
-    return B_rrr
+    return B_rrr, B_ols
 
 def pool_data(data):
     """
@@ -334,7 +334,7 @@ def pool_data(data):
     Y_all = np.concatenate(Y_all, axis=0)
     return X_all, Y_all
 
-def calculate_mse(test_data, B_rrr, nan_mask, valid_indices):
+def calculate_mse(test_data, B_rrr, nan_mask, valid_indices): # FIX THIS
     """
     Calculate the Mean Squared Error (MSE) for the test data.
     Args:
