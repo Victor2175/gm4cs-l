@@ -332,3 +332,29 @@ def pool_data(data):
     X_all = np.concatenate(X_all, axis=0)
     Y_all = np.concatenate(Y_all, axis=0)
     return X_all, Y_all
+
+def calculate_mse(test_data, B_rrr):
+    """
+    Calculate the Mean Squared Error (MSE) for the test data.
+    Args:
+        test_data (dict): Dictionary containing the test data.
+        B_rrr (np.array): Reduced-rank weight matrix.
+        
+    Returns:
+        float: Mean Squared Error.
+    """
+    test_model = list(test_data.keys())[0]
+    test_runs = [run for run in test_data[test_model].keys() if run != 'forced_response']
+    test_run = test_data[test_model][random.choice(test_runs)]
+    ground_truth = test_data[test_model]['forced_response']
+
+    # Make the prediction
+    prediction = test_run @ B_rrr
+
+    # Restore NaNs in the predicted matrix
+    prediction = restore_nan(prediction, nan_mask, valid_indices)
+    ground_truth = restore_nan(ground_truth, nan_mask, valid_indices)
+
+    # Calculate MSE
+    mse = mean_squared_error(ground_truth, prediction)
+    return mse
