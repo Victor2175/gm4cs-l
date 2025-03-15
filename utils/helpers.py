@@ -190,20 +190,32 @@ def normalize_data(train_data, test_data):
     # Normalize the test data using the computed mean and std for all models together
     normalized_test_data = {}
     for model in tqdm(test_data):
-        test_runs = []
         normalized_test_data[model] = {}
         for run in test_data[model]:
-            test_runs.append(test_data[model][run]) # Only used for computing the mean and std for the target (forced response)
             normalized_test_data[model][run] = (test_data[model][run] - full_mean_and_time) / full_std
         
-        test_runs_stack = np.stack(test_runs, axis=0) # Shape (# Runs x T x d)
-        test_mean = np.mean(test_runs_stack, axis=(0, 1)) # Shape (d,)
-        test_std = np.std(test_runs_stack, axis=0) # Shape (T x d)
+        test_runs = np.concatenate([test_data[model][run] for run in test_data[model]], axis=0) # Shape (# Runs x T x d)
+        test_mean = np.mean(test_runs, axis=(0, 1)) # Shape (d,)
+        test_std = np.std(test_runs, axis=0) # Shape (T x d)
         
         # Apply the test mean and std to the forced response (MUST NOT BE USED ON THE RUNS)
         normalized_test_data[model]['forced_response'] = (test_data[model]['forced_response'] - test_mean) / test_std
         
     return normalized_train_data, normalized_test_data, training_statistics, testing_statistics
+
+def pool_data(data):
+    """
+    Pool data from different models and runs.
+    Args:
+        data (dict): Dictionary containing the data.
+        
+    Returns:
+        np.array: Pooled input data.
+        np.array: Pooled output data.
+    """
+    X_all = np.concatenate([data[model][run] for model in data for run in data[model]], axis=0)
+    Y_all = np.concatenate([data[model]['forced_response'] for model in data for run in data[model]], axis=0)
+    return X_all, Y_all
 
 def readd_nans_to_grid(data, nan_mask, predictions=False):
     """
@@ -217,7 +229,7 @@ def readd_nans_to_grid(data, nan_mask, predictions=False):
     Returns:
         dict or np.ndarray: Data with NaN values re-added.
     """
-    nan_mask_flat = nan_mask.flatten()
+    nan_mask_flat = nan_mask.ravel()
     
     if predictions:
         # Handle the case where data is a simple array
@@ -226,14 +238,12 @@ def readd_nans_to_grid(data, nan_mask, predictions=False):
         return reshaped_data
     else:
         # Handle the case where data is a dictionary
-        data_with_nans = {}
         for model in data:
-            data_with_nans[model] = {}
             for run in data[model]:
                 reshaped_run = np.full((data[model][run].shape[0], nan_mask_flat.shape[0]), np.nan)
                 reshaped_run[:, ~nan_mask_flat] = data[model][run]
-                data_with_nans[model][run] = reshaped_run
-        return data_with_nans
+                data[model][run] = reshaped_run
+        return data
 
 def reduced_rank_regression(X, y, rank, lambda_):
     """
@@ -263,26 +273,6 @@ def reduced_rank_regression(X, y, rank, lambda_):
     B_rrr = B_ols @ Vt_r.T @ Vt_r # Reduced-rank weight matrix
 
     return B_rrr, B_ols
-
-def pool_data(data):
-    """
-    Pool data from different models and runs.
-    Args:
-        data (dict): Dictionary containing the data.
-        
-    Returns:
-        np.array: Pooled input data.
-        np.array: Pooled output data.
-    """
-    X_all = []
-    Y_all = []
-    for model in data:
-        for run in data[model]:
-            X_all.append(data[model][run])
-            Y_all.append(data[model]['forced_response'])
-    X_all = np.concatenate(X_all, axis=0)
-    Y_all = np.concatenate(Y_all, axis=0)
-    return X_all, Y_all
 
 def calculate_mse(test_data, B_rrr, nan_mask, valid_indices): # FIX THIS
     """
