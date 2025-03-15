@@ -141,7 +141,7 @@ def remove_nans_from_grid(data, nan_mask):
     Returns:
         dict: Data with NaN values removed.
     """
-    for model in data:
+    for model in tqdm(data):
         for run in data[model]:
             mask = ~nan_mask
             data[model][run] = data[model][run][:, mask.ravel()] # Use Ravel instead of Flatten since it's in place
@@ -170,8 +170,8 @@ def normalize_data(train_data, test_data):
         all_runs = np.concatenate([model_runs[run] for run in model_runs], axis=0) # USE CONCATENATE (or torch.cat)
         
         # Compute the mean and std for each grid square and each timestamp for the current model
-        mean_and_time = np.nanmean(all_runs_stack, axis=(0, 1)) # Shape (d,)
-        std_ = np.nanstd(all_runs_stack, axis=0) # Shape (T x d)
+        mean_and_time = np.nanmean(all_runs, axis=(0, 1)) # Shape (d,)
+        std_ = np.nanstd(all_runs, axis=0) # Shape (T x d)
         
         training_statistics[model] = {'mean': mean_and_time, 'std': std_}
         
@@ -182,8 +182,8 @@ def normalize_data(train_data, test_data):
     # Compute the mean and std for each grid square per time stamp but for all the models together
     all_runs = np.concatenate([train_data[model][run] for model in train_data for run in train_data[model]], axis = 0)
     
-    full_mean_and_time = np.nanmean(all_runs_stack, axis=(0, 1)) # Shape (d,)
-    full_std = np.nanstd(all_runs_stack, axis=0) # Shape (T x d)
+    full_mean_and_time = np.nanmean(all_runs, axis=(0, 1)) # Shape (d,)
+    full_std = np.nanstd(all_runs, axis=0) # Shape (T x d)
     
     testing_statistics = {'mean': full_mean_and_time, 'std': full_std}
     
@@ -213,8 +213,8 @@ def pool_data(data):
         np.array: Pooled input data.
         np.array: Pooled output data.
     """
-    X_all = np.concatenate([data[model][run] for model in data for run in data[model]], axis=0)
-    Y_all = np.concatenate([data[model]['forced_response'] for model in data for run in data[model]], axis=0)
+    X_all = np.concatenate([data[model][run] for model in tqdm(data) for run in data[model]], axis=0)
+    Y_all = np.concatenate([data[model]['forced_response'] for model in tqdm(data) for run in data[model]], axis=0)
     return X_all, Y_all
 
 def readd_nans_to_grid(data, nan_mask, predictions=False):
