@@ -40,7 +40,7 @@ def filter_data(data, min_runs=4):
     """
     filtered_data = {
         model: {run: np.flip(data[model][run], axis=1) for run in data[model]}
-        for model in data.keys() if len(data[model]) >= min_runs
+        for model in tqdm(data.keys()) if len(data[model]) >= min_runs
     }
     return filtered_data
 
@@ -53,46 +53,33 @@ def create_nan_mask(filtered_data):
     Returns:
         np.array: Boolean mask with True values for NaN values.
     """
-    grid_shape = filtered_data[list(filtered_data.keys())[0]][list(filtered_data[list(filtered_data.keys())[0]].keys())[0]].shape[1:]
+    first_model = list(filtered_data.keys())[0]
+    first_run = list(filtered_data[first_model].keys())[0]
+    grid_shape = filtered_data[first_model][first_run].shape[1:]
     nan_mask = np.zeros(grid_shape, dtype=bool)
+    
     for model in tqdm(filtered_data):
         for run in filtered_data[model]:
             nan_mask = nan_mask | np.any(np.isnan(filtered_data[model][run]), axis=0)
     return nan_mask
 
-def remove_nans_1(filtered_data, nan_mask):
+def mask_out_nans(filtered_data, nan_mask):
     """
-    Remove NaN values from the data.
+    Mask out NaN values from the data.
     Args:
-        filtered_data (dict): Filtered data.
+        data (dict): Dictionary containing the data.
         nan_mask (np.array): Boolean mask with True values for NaN values.
         
     Returns:
-        dict: Data with NaN values replaced by 0.
+        dict: Data with NaN values masked out.
     """
-    nan_filtered_data = filtered_data.copy()
-    for model in tqdm(nan_filtered_data):
-        for run in nan_filtered_data[model]:
-            nan_filtered_data[model][run][:, nan_mask] = np.nan
-    return nan_filtered_data
+    # Modifications done in place
+    for model in tqdm(filtered_data):
+        for run in filtered_data[model]:
+            filtered_data[model][run][:, nan_mask] = np.nan
+    return filtered_data
 
-# def reshape_data(data):
-#     """
-#     Reshape data to have a 2D shape.
-#     Args:
-#         data (dict): Dictionary containing the data.
-        
-#     Returns:
-#         dict: Reshaped data.
-#     """
-#     reshaped_data = {}
-#     for model in tqdm(data):
-#         reshaped_data[model] = {}
-#         for run in data[model]:
-#             reshaped_data[model][run] = data[model][run].reshape(data[model][run].shape[0], -1)
-#     return reshaped_data
-
-def reshape_data(data):
+def reshape_data(masked_data):
     """
     Reshape data to have a 2D shape.
     Args:
@@ -101,13 +88,10 @@ def reshape_data(data):
     Returns:
         dict: Reshaped data.
     """
-    return {
-        model: {
-            run: run_data.reshape(run_data.shape[0], -1)
-            for run, run_data in model_data.items()
-        }
-        for model, model_data in tqdm(data.items())
-    }
+    for model, model_data in tqdm(masked_data.items()):
+        for run, run_data in model_data.items():
+            masked_data[model][run] = run_data.reshape(run_data.shape[0], -1)
+    return masked_data
 
 def center_data(filtered_data):
     """
@@ -127,25 +111,6 @@ def center_data(filtered_data):
         centered_data[model]['forced_response'] = forced_response
     return centered_data
 
-def plot_time_series(time_series_data, forced_response_data, grid_spot, model_name):
-    """
-    Plot the time series data for a given grid spot.
-    Args:
-        time_series_data (dict): Dictionary containing the time series data.
-        forced_response_data (np.array): Forced response data.
-        grid_spot (tuple): Grid spot to plot.
-        model_name (str): Name of the model.
-    """
-    plt.figure(figsize=(10, 6))
-    for data in time_series_data.values():
-        plt.plot(data, color='blue', alpha=0.5)
-    plt.plot(forced_response_data, color='red', label='Forced Response', linewidth=2)
-    plt.title(f'Time Evolution at Grid Spot ({grid_spot[0]}, {grid_spot[1]}) for Model: {model_name}')
-    plt.xlabel('Time')
-    plt.ylabel('Value')
-    plt.legend()
-    plt.show()
-
 ### Pre processing for the reduced rank regression ###
 def add_forced_response(data):
     """
@@ -159,14 +124,13 @@ def add_forced_response(data):
     dict: Data with the forced response added.
     """
     # We assume that the forced response is the average of all runs (for each model)
-    data_with_forced_response = data.copy()
-    for model in data_with_forced_response:
-        runs_stack = np.stack([data_with_forced_response[model][run] for run in data_with_forced_response[model]], axis=0)
+    for model in tqdm(data):
+        runs_stack = np.stack([data[model][run] for run in data[model]], axis=0)
         forced_response = np.mean(runs_stack, axis=0)
-        data_with_forced_response[model]['forced_response'] = forced_response
-    return data_with_forced_response
+        data[model]['forced_response'] = forced_response
+    return data
 
-def remove_nans(data, nan_mask):
+def remove_nans_from_grid(data, nan_mask):
     """
     Remove NaN values from the data matrices
 
@@ -177,43 +141,11 @@ def remove_nans(data, nan_mask):
     Returns:
         dict: Data with NaN values removed.
     """
-    nan_mask_flat = nan_mask.flatten()
-    data_no_nans = {}
     for model in data:
-        data_no_nans[model] = {}
         for run in data[model]:
-            data_no_nans[model][run] = data[model][run][:, ~nan_mask_flat]
-    return data_no_nans
-
-def readd_nans(data, nan_mask, predictions=False):
-    """
-    Re-add NaN values to the data matrices for visualization purposes.
-    
-    Args:
-        data (dict or np.ndarray): Dictionary containing the normalized data or a simple array if predictions is True.
-        nan_mask (np.ndarray): Boolean mask indicating NaN positions.
-        predictions (bool): Flag indicating if the data is a simple array (True) or a dictionary (False).
-        
-    Returns:
-        dict or np.ndarray: Data with NaN values re-added.
-    """
-    nan_mask_flat = nan_mask.flatten()
-    
-    if predictions:
-        # Handle the case where data is a simple array
-        reshaped_data = np.full((data.shape[0], nan_mask_flat.shape[0]), np.nan)
-        reshaped_data[:, ~nan_mask_flat] = data
-        return reshaped_data
-    else:
-        # Handle the case where data is a dictionary
-        data_with_nans = {}
-        for model in data:
-            data_with_nans[model] = {}
-            for run in data[model]:
-                reshaped_run = np.full((data[model][run].shape[0], nan_mask_flat.shape[0]), np.nan)
-                reshaped_run[:, ~nan_mask_flat] = data[model][run]
-                data_with_nans[model][run] = reshaped_run
-        return data_with_nans
+            mask = ~nan_mask
+            data[model][run] = data[model][run][:, mask.ravel()] # Use Ravel instead of Flatten since it's in place
+    return data
 
 def normalize_data(train_data, test_data):
     """
@@ -284,6 +216,36 @@ def normalize_data(train_data, test_data):
         normalized_test_data[model]['forced_response'] = (test_data[model]['forced_response'] - test_mean) / test_std
         
     return normalized_train_data, normalized_test_data, training_statistics, testing_statistics
+
+def readd_nans_to_grid(data, nan_mask, predictions=False):
+    """
+    Re-add NaN values to the data matrices for visualization purposes.
+    
+    Args:
+        data (dict or np.ndarray): Dictionary containing the normalized data or a simple array if predictions is True.
+        nan_mask (np.ndarray): Boolean mask indicating NaN positions.
+        predictions (bool): Flag indicating if the data is a simple array (True) or a dictionary (False).
+        
+    Returns:
+        dict or np.ndarray: Data with NaN values re-added.
+    """
+    nan_mask_flat = nan_mask.flatten()
+    
+    if predictions:
+        # Handle the case where data is a simple array
+        reshaped_data = np.full((data.shape[0], nan_mask_flat.shape[0]), np.nan)
+        reshaped_data[:, ~nan_mask_flat] = data
+        return reshaped_data
+    else:
+        # Handle the case where data is a dictionary
+        data_with_nans = {}
+        for model in data:
+            data_with_nans[model] = {}
+            for run in data[model]:
+                reshaped_run = np.full((data[model][run].shape[0], nan_mask_flat.shape[0]), np.nan)
+                reshaped_run[:, ~nan_mask_flat] = data[model][run]
+                data_with_nans[model][run] = reshaped_run
+        return data_with_nans
 
 def reduced_rank_regression(X, y, rank, lambda_):
     """
@@ -359,3 +321,23 @@ def calculate_mse(test_data, B_rrr, nan_mask, valid_indices): # FIX THIS
     # Calculate MSE
     mse = mean_squared_error(ground_truth, prediction)
     return mse
+
+
+def plot_time_series(time_series_data, forced_response_data, grid_spot, model_name):
+    """
+    Plot the time series data for a given grid spot.
+    Args:
+        time_series_data (dict): Dictionary containing the time series data.
+        forced_response_data (np.array): Forced response data.
+        grid_spot (tuple): Grid spot to plot.
+        model_name (str): Name of the model.
+    """
+    plt.figure(figsize=(10, 6))
+    for data in time_series_data.values():
+        plt.plot(data, color='blue', alpha=0.5)
+    plt.plot(forced_response_data, color='red', label='Forced Response', linewidth=2)
+    plt.title(f'Time Evolution at Grid Spot ({grid_spot[0]}, {grid_spot[1]}) for Model: {model_name}')
+    plt.xlabel('Time')
+    plt.ylabel('Value')
+    plt.legend()
+    plt.show()
