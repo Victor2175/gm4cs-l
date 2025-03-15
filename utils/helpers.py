@@ -162,42 +162,30 @@ def normalize_data(train_data, test_data):
     """
     # Normalize training data using mean and std for each model separately
     normalized_train_data = {}
-
     training_statistics = {}
     testing_statistics = {}
+    
     for model in tqdm(train_data):
-        all_runs = []
-        for run in train_data[model]:
-            all_runs.append(train_data[model][run]) # USE CONCATENATE (or torch.cat)
-        all_runs_stack = np.stack(all_runs, axis=0) # Shape (# Runs x T x d)
+        model_runs = train_data[model]  # Store reference
+        all_runs = np.concatenate([model_runs[run] for run in model_runs], axis=0) # USE CONCATENATE (or torch.cat)
         
         # Compute the mean and std for each grid square and each timestamp for the current model
         mean_and_time = np.nanmean(all_runs_stack, axis=(0, 1)) # Shape (d,)
         std_ = np.nanstd(all_runs_stack, axis=0) # Shape (T x d)
         
-        training_statistics[model] = {}
-        training_statistics[model]['mean'] = mean_and_time
-        training_statistics[model]['std'] = std_
-        training_statistics[model]['model'] = model
+        training_statistics[model] = {'mean': mean_and_time, 'std': std_}
         
         # Normalize the training data for the current model (including the forced response)
-        normalized_train_data[model] = {}
-        for run in train_data[model]:
-            normalized_train_data[model][run] = (train_data[model][run] - mean_and_time) / std_
-        # normalized_train_data[model]['forced_response'] = (train_data[model]['forced_response'] - mean_and_time) / std_
-        
+        normalized_train_data[model] = {run: (model_runs[run] - mean_and_time) / std_ for run in model_runs}
+    
+    
     # Compute the mean and std for each grid square per time stamp but for all the models together
-    all_runs = []
-    for model in train_data:
-        for run in train_data[model]:
-            all_runs.append(train_data[model][run])
-    all_runs_stack = np.stack(all_runs, axis = 0)
+    all_runs = np.concatenate([train_data[model][run] for model in train_data for run in train_data[model]], axis = 0)
     
     full_mean_and_time = np.nanmean(all_runs_stack, axis=(0, 1)) # Shape (d,)
     full_std = np.nanstd(all_runs_stack, axis=0) # Shape (T x d)
     
-    testing_statistics['mean'] = full_mean_and_time
-    testing_statistics['std'] = full_std
+    testing_statistics = {'mean': full_mean_and_time, 'std': full_std}
     
     # Normalize the test data using the computed mean and std for all models together
     normalized_test_data = {}
