@@ -162,14 +162,6 @@ def normalize_data(train_data, test_data):
     normalized_train_data = {}
     training_statistics = {}
     testing_statistics = {}
-    
-    # Store means before normalization for plotting
-    means_before_normalization = []
-    means_after_normalization = []
-    values_before_normalization_train = []
-    values_after_normalization_train = []
-    values_before_normalization_test = []
-    values_after_normalization_test = []
 
     for model in tqdm(train_data):
         model_runs = train_data[model]  # list of runs for the current model
@@ -177,31 +169,19 @@ def normalize_data(train_data, test_data):
         
         # Compute the mean and std for each grid square and each timestamp for the current model
         mean_and_time = np.mean(all_runs, axis=(0, 1)) # Shape (d,)
-        std_ = np.std(all_runs, axis=(0, 1)) # Shape (T x d)
+        std_ = np.std(all_runs, axis=0) # Shape (T x d)
         
         # Store statistics
         training_statistics[model] = {'mean': mean_and_time, 'std': std_}
-        
-        # Store values before normalization for plotting
-        values_before_normalization_train.extend(all_runs.ravel())
-        
+                
         # Normalize the training data for the current model (including the forced response)
         normalized_train_data[model] = {run: (model_runs[run] - mean_and_time) / std_ for run in model_runs}
-   
-        # Store values after normalization for plotting
-        all_runs_normalized = np.stack([normalized_train_data[model][run] for run in normalized_train_data[model]], axis=0)
-        values_after_normalization_train.extend(all_runs_normalized.ravel())
-        
-        # Store mean before and after normalization for plotting
-        means_before_normalization.extend(mean_and_time)
-        mean_after = np.mean(all_runs_normalized, axis=(0, 1))
-        means_after_normalization.extend(mean_after)
 
     # Compute the mean and std for each grid square per time stamp but for all the models together
     all_runs = np.stack([train_data[model][run] for model in train_data for run in train_data[model]], axis=0)
 
     full_mean_and_time = np.mean(all_runs, axis=(0, 1)) # Shape (d,)
-    full_std = np.std(all_runs, axis=(0, 1)) # Shape (T x d)
+    full_std = np.std(all_runs, axis=0) # Shape (T x d)
     
     testing_statistics = {'mean': full_mean_and_time, 'std': full_std}
     
@@ -213,49 +193,15 @@ def normalize_data(train_data, test_data):
         for run in test_data[model]:
             if run != 'forced_response':
                 normalized_test_data[model][run] = (test_data[model][run] - full_mean_and_time) / full_std
-        print("data normalized")
+                
         test_runs = np.stack([test_data[model][run] for run in test_data[model]], axis=0) # Shape (# Runs x T x d)
-        values_before_normalization_test.extend(test_runs.ravel())
         test_mean = np.mean(test_runs, axis=(0, 1)) # Shape (d,)
-        test_std = np.std(test_runs, axis=(0, 1)) # Shape (T x d)
+        test_std = np.std(test_runs, axis=0) # Shape (T x d)
         
         # Apply the test mean and std to the forced response (MUST NOT BE USED ON THE RUNS)
         normalized_test_data[model]['forced_response'] = (test_data[model]['forced_response'] - test_mean) / test_std
-        normalized_forced_response = normalized_test_data[model]['forced_response']
-        values_after_normalization_test.extend(normalized_forced_response.ravel())
-        print(f"Completed normalization for model {model}")
 
     print("Data normalization completed.")
-    
-    # Plot means before and after normalization
-    plt.figure(figsize=(8, 4))
-    plt.plot(means_before_normalization[:1000], label='Before Normalization')  # Plot a subset of the data
-    plt.plot(means_after_normalization[:1000], label='After Normalization')  # Plot a subset of the data
-    plt.xlabel('Model')
-    plt.ylabel('Mean Value')
-    plt.title('Means Before and After Normalization')
-    plt.legend()
-    plt.show()
-    
-    # Plot distribution of values before and after normalization for train data
-    plt.figure(figsize=(8, 4))
-    plt.hist(values_before_normalization_train[:10000], bins=20, alpha=0.5, label='Before Normalization (Train)')  # Plot a subset of the data
-    plt.hist(values_after_normalization_train[:10000], bins=20, alpha=0.5, label='After Normalization (Train)')  # Plot a subset of the data
-    plt.xlabel('Value')
-    plt.ylabel('Frequency')
-    plt.title('Distribution of Values Before and After Normalization (Train)')
-    plt.legend()
-    plt.show()
-    
-    # Plot distribution of values before and after normalization for test data
-    plt.figure(figsize=(8, 4))
-    plt.hist(values_before_normalization_test[:10000], bins=20, alpha=0.5, label='Before Normalization (Test)')  # Plot a subset of the data
-    plt.hist(values_after_normalization_test[:10000], bins=20, alpha=0.5, label='After Normalization (Test)')  # Plot a subset of the data
-    plt.xlabel('Value')
-    plt.ylabel('Frequency')
-    plt.title('Distribution of Values Before and After Normalization (Test)')
-    plt.legend()
-    plt.show()
     
     return normalized_train_data, normalized_test_data, training_statistics, testing_statistics
 
@@ -331,49 +277,24 @@ def reduced_rank_regression(X, y, rank, lambda_):
     return B_rrr, B_ols
 
 
-def calculate_mse(test_data, B_rrr, nan_mask, valid_indices):
+def calculate_mse(run_data, B_rrr, ground_truth):
     """
-    Calculate the Mean Squared Error (MSE) for the test data and plot the distribution.
+    Calculate the Mean Squared Error (MSE) for a single run of the test data.
     Args:
-        test_data (dict): Dictionary containing the test data.
+        run_data (np.array): array of shape (T, d).
         B_rrr (np.array): Reduced-rank weight matrix.
-        nan_mask (np.array): Boolean mask indicating NaN positions.
-        valid_indices (np.array): Indices of valid (non-NaN) positions.
+        ground_truth (np.array): Ground truth data of shape (T, d).
         
     Returns:
         float: Mean Squared Error.
     """
-    test_model = list(test_data.keys())[0]
-    test_runs = [run for run in test_data[test_model].keys() if run != 'forced_response']
-    ground_truth = test_data[test_model]['forced_response']
-
-    mse_list = []
-
-    for run in test_runs:
-        test_run = test_data[test_model][run]
-
-        # Make the prediction
-        prediction = test_run @ B_rrr
-
-        # Restore NaNs in the predicted matrix
-        # prediction = readd_nans_to_grid(prediction, nan_mask, valid_indices)
-        # ground_truth_with_nans = readd_nans_to_grid(ground_truth, nan_mask, valid_indices)
-
-        # Calculate MSE for the current run
-        mse = mean_squared_error(ground_truth, prediction)
-        mse_list.append(mse)
-
-    # Plot the distribution of MSE
-    plt.figure(figsize=(10, 6))
-    plt.hist(mse_list, bins=20, edgecolor='k', alpha=0.7)
-    plt.xlabel('MSE')
-    plt.ylabel('Frequency')
-    plt.title(f'Distribution of MSE for {test_model}')
-    plt.show()
-
-    # Calculate the average MSE
-    average_mse = np.mean(mse_list)
-    return average_mse
+    # Compute the predicted response
+    y_pred = run_data @ B_rrr
+    
+    # Calculate the Mean Squared Error
+    mse = mean_squared_error(ground_truth, y_pred)
+    
+    return mse
 
 
 def plot_time_series(time_series_data, forced_response_data, grid_spot, model_name):
