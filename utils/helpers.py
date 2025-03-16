@@ -22,8 +22,10 @@ def load_data(data_path, filename):
     Returns:
         _type_: _description_
     """
+    print(f"Loading data from {filename}")
     with open(os.path.join(data_path, filename), 'rb') as f:
         data = pkl.load(f)
+    print("Data loaded successfully.")
     return data
 
 def filter_data(data, min_runs=4):
@@ -36,10 +38,12 @@ def filter_data(data, min_runs=4):
     Returns:
         dict: Filtered data.
     """
+    print("Filtering data...")
     filtered_data = {
         model: {run: np.flip(data[model][run], axis=1) for run in data[model]}
         for model in tqdm(data.keys()) if len(data[model]) >= min_runs
     }
+    print(f"Data filtered. Kept {len(filtered_data)} models")
     return filtered_data
 
 def create_nan_mask(filtered_data):
@@ -51,6 +55,7 @@ def create_nan_mask(filtered_data):
     Returns:
         np.array: Boolean mask with True values for NaN values.
     """
+    print("Creating NaN mask...")
     first_model = list(filtered_data.keys())[0]
     first_run = list(filtered_data[first_model].keys())[0]
     grid_shape = filtered_data[first_model][first_run].shape[1:]
@@ -59,6 +64,7 @@ def create_nan_mask(filtered_data):
     for model in tqdm(filtered_data):
         for run in filtered_data[model]:
             nan_mask = nan_mask | np.any(np.isnan(filtered_data[model][run]), axis=0)
+    print("NaN mask created.")
     return nan_mask
 
 def mask_out_nans(filtered_data, nan_mask):
@@ -72,9 +78,11 @@ def mask_out_nans(filtered_data, nan_mask):
         dict: Data with NaN values masked out.
     """
     # Modifications done in place
+    print("Masking out NaN values...")
     for model in tqdm(filtered_data):
         for run in filtered_data[model]:
             filtered_data[model][run][:, nan_mask] = np.nan
+    print("NaN values masked out.")
     return filtered_data
 
 def reshape_data(masked_data):
@@ -86,9 +94,11 @@ def reshape_data(masked_data):
     Returns:
         dict: Reshaped data.
     """
+    print("Reshaping data...")
     for model, model_data in tqdm(masked_data.items()):
         for run, run_data in model_data.items():
             masked_data[model][run] = run_data.reshape(run_data.shape[0], -1)
+    print("Data reshaped.")
     return masked_data
 
 def center_data(filtered_data):
@@ -122,10 +132,12 @@ def add_forced_response(data):
     dict: Data with the forced response added.
     """
     # We assume that the forced response is the average of all runs (for each model)
+    print("Adding the forced response to the data...")
     for model in tqdm(data):
         runs_stack = np.stack(list(data[model].values()), axis=0)
         forced_response = np.mean(runs_stack, axis=0)
         data[model]['forced_response'] = forced_response
+    print("Forced response added.")
     return data
 
 def remove_nans_from_grid(data, nan_mask):
@@ -139,10 +151,12 @@ def remove_nans_from_grid(data, nan_mask):
     Returns:
         dict: Data with NaN values removed.
     """
+    print("Removing NaN values from the grid...")
     mask = ~nan_mask
     for model in tqdm(data):
         for run in data[model]:
             data[model][run] = data[model][run][:, mask.ravel()] # Use Ravel instead of Flatten since it's in place
+    print("NaN values removed.")
     return data
 
 def normalize_data(train_data, test_data):
@@ -158,6 +172,7 @@ def normalize_data(train_data, test_data):
         dict: Normalized test data.
         dict: Scalers used for normalization.
     """
+    print("Normalizing data...")
     # Normalize training data using mean and std for each model separately
     normalized_train_data = {}
     training_statistics = {}
@@ -188,7 +203,6 @@ def normalize_data(train_data, test_data):
     # Normalize the test data using the computed mean and std for all models together
     normalized_test_data = {}
     for model in tqdm(test_data):
-        print(f"Normalizing test data for model {model}")
         normalized_test_data[model] = {}
         for run in test_data[model]:
             if run != 'forced_response':
@@ -215,8 +229,10 @@ def pool_data(data):
         np.array: Pooled input data.
         np.array: Pooled output data.
     """
+    print("Pooling data...")
     X_all = np.concatenate([data[model][run] for model in tqdm(data) for run in data[model]], axis=0)
     Y_all = np.concatenate([data[model]['forced_response'] for model in tqdm(data) for run in data[model]], axis=0)
+    print("Data pooled.")
     return X_all, Y_all
 
 def readd_nans_to_grid(data, nan_mask, predictions=False):
@@ -231,6 +247,7 @@ def readd_nans_to_grid(data, nan_mask, predictions=False):
     Returns:
         dict or np.ndarray: Data with NaN values re-added.
     """
+    print("Re-adding NaN values to the grid...")
     nan_mask_flat = nan_mask.ravel()
     
     if predictions:
@@ -245,7 +262,8 @@ def readd_nans_to_grid(data, nan_mask, predictions=False):
                 reshaped_run = np.full((data[model][run].shape[0], nan_mask_flat.shape[0]), np.nan)
                 reshaped_run[:, ~nan_mask_flat] = data[model][run]
                 data[model][run] = reshaped_run
-        return data
+    print("NaN values re-added.")
+    return data
 
 def reduced_rank_regression(X, y, rank, lambda_):
     """
@@ -260,6 +278,7 @@ def reduced_rank_regression(X, y, rank, lambda_):
     """
 
     # Fit OLS
+    print("Fitting OLS...")
     identity = np.eye(X.shape[1])
     B_ols = np.linalg.inv(X.T @ X + lambda_ * identity) @ X.T @ y # Analytical solution of ridge regression (pseudo inverse)
     # Compute SVD
@@ -273,7 +292,7 @@ def reduced_rank_regression(X, y, rank, lambda_):
 
     # Compute B_rrr
     B_rrr = B_ols @ Vt_r.T @ Vt_r # Reduced-rank weight matrix
-
+    print("RRR completed.")
     return B_rrr, B_ols
 
 
@@ -296,22 +315,89 @@ def calculate_mse(run_data, B_rrr, ground_truth):
     
     return mse
 
-
-def plot_time_series(time_series_data, forced_response_data, grid_spot, model_name):
+def preprocess_data(data_path, filename, min_runs=4):
     """
-    Plot the time series data for a given grid spot.
+    Preprocess the data by performing all the necessary steps in one call.
+    
     Args:
-        time_series_data (dict): Dictionary containing the time series data.
-        forced_response_data (np.array): Forced response data.
-        grid_spot (tuple): Grid spot to plot.
-        model_name (str): Name of the model.
+        data_path (str): Path to the data directory.
+        filename (str): Name of the data file.
+        min_runs (int): Minimum number of runs to keep a model.
+        
+    Returns:
+        dict: Preprocessed data.
+        np.ndarray: NaN mask.
     """
-    plt.figure(figsize=(10, 6))
-    for data in time_series_data.values():
-        plt.plot(data, color='blue', alpha=0.5)
-    plt.plot(forced_response_data, color='red', label='Forced Response', linewidth=2)
-    plt.title(f'Time Evolution at Grid Spot ({grid_spot[0]}, {grid_spot[1]}) for Model: {model_name}')
-    plt.xlabel('Time')
-    plt.ylabel('Value')
-    plt.legend()
-    plt.show()
+    # Load the data
+    data = load_data(data_path, filename)
+    
+    # Filter the data
+    filtered_data = filter_data(data, min_runs)
+    
+    # Create a NaN mask
+    nan_mask = create_nan_mask(filtered_data)
+    
+    # Mask out NaNs
+    masked_data = mask_out_nans(filtered_data, nan_mask)
+    
+    # Reshape the data so that each run is of shape (T, d)
+    reshaped_data = reshape_data(masked_data)
+    
+    # Add the forced response, IMPORTANT to do it before normalizing
+    data_with_forced_response = add_forced_response(reshaped_data)
+    
+    # Remove NaNs from the grid
+    data_without_nans = remove_nans_from_grid(data_with_forced_response, nan_mask)
+    
+    return data_without_nans, nan_mask
+
+def loo_cross_validation(data, lambdas, rank=15):
+    """
+    Perform leave-one-out cross-validation to get a distribution of the MSE for different values of lambda.
+    
+    Args:
+        data (dict): Preprocessed data without NaNs.
+        lambdas (list): List of lambda values to test.
+        rank (int): Desired rank for dimensionality reduction.
+        
+    Returns:
+        dict: Dictionary containing the MSE distribution for each lambda.
+    """
+    mse_distribution = {lambda_: {} for lambda_ in lambdas}
+    models = list(data.keys())
+    
+    for test_model in tqdm(models):
+        # Split the data into training and testing sets according to the leave-one-out scheme
+        train_models = [model for model in models if model != test_model]
+        train_data = {model: data[model] for model in train_models}
+        test_data = {test_model: data[test_model]}
+        
+        # Normalize the data
+        normalized_train_data, normalized_test_data, _, _ = normalize_data(train_data, test_data)
+        
+        # Pool the training data
+        X_train, Y_train = pool_data(normalized_train_data)
+        
+        print("Performing leave-one-out cross-validation for model:", test_model)
+        
+        # Get the test runs and ground truth
+        test_runs = [run for run in normalized_test_data[test_model].keys() if run != 'forced_response']
+        ground_truth = normalized_test_data[test_model]['forced_response']
+        
+        for lambda_ in lambdas:
+            # Perform reduced rank regression
+            B_rrr, _ = reduced_rank_regression(X_train, Y_train, rank, lambda_)
+            
+            # Calculate the MSE for each test run
+            mse_values = []
+            for run in test_runs:
+                test_run_data = normalized_test_data[test_model][run]
+                mse = calculate_mse(test_run_data, B_rrr, ground_truth)
+                mse_values.append(mse)
+            
+            # Store the MSE values for the current model and lambda
+            if test_model not in mse_distribution[lambda_]:
+                mse_distribution[lambda_][test_model] = []
+            mse_distribution[lambda_][test_model].extend(mse_values)
+    
+    return mse_distribution
