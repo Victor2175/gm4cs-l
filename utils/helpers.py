@@ -9,7 +9,7 @@ import matplotlib.animation as animation
 import seaborn as sns
 import random
 from tqdm import tqdm
-from sklearn.preprocessing import StandardScaler
+from IPython.display import HTML, display
 
 ### Data Loading and Preprocessing ###
 
@@ -221,21 +221,34 @@ def normalize_data(train_data, test_data):
     
     return normalized_train_data, normalized_test_data, training_statistics, testing_statistics
 
-def pool_data(data):
-    """
-    Pool data from different models and runs.
-    Args:
-        data (dict): Dictionary containing the data.
+# def pool_data(data):
+#     """
+#     Pool data from different models and runs.
+#     Args:
+#         data (dict): Dictionary containing the data.
         
-    Returns:
-        np.array: Pooled input data.
-        np.array: Pooled output data.
-    """
+#     Returns:
+#         np.array: Pooled input data.
+#         np.array: Pooled output data.
+#     """
+#     print("Pooling data...")
+#     X_all = np.concatenate([data[model][run] for model in tqdm(data) for run in data[model]], axis=0)
+#     Y_all = np.concatenate([data[model]['forced_response'] for model in tqdm(data) for run in data[model]], axis=0)
+#     print("Data pooled.")
+#     return X_all, Y_all
+
+# Optimized version of pool_data
+def pool_data(data):
+    X_all_list = []
+    Y_all_list = []
     print("Pooling data...")
-    X_all = np.concatenate([data[model][run] for model in tqdm(data) for run in data[model]], axis=0)
-    Y_all = np.concatenate([data[model]['forced_response'] for model in tqdm(data) for run in data[model]], axis=0)
+    for model in tqdm(data):
+        for run in data[model]:
+            X_all_list.append(data[model][run])
+            Y_all_list.append(data[model]['forced_response'])
     print("Data pooled.")
-    return X_all, Y_all
+    return np.concatenate(X_all_list, axis=0), np.concatenate(Y_all_list, axis=0)
+
 
 def readd_nans_to_grid(data, nan_mask, predictions=False):
     """
@@ -317,6 +330,33 @@ def calculate_mse(run_data, B_rrr, ground_truth):
     
     return mse
 
+def calculate_mse_distribution(normalized_train_data, Brr):
+    """_summary_
+
+    Args:
+        normalized_train_data (_type_): _description_
+        Brr (_type_): _description_
+    Returns:
+        _type_: _description_
+    """
+    avg_mse_values_train = {}
+    
+    for model in tqdm(normalized_train_data):
+        avg_mse_values_train[model] = []
+        ground_truth = normalized_train_data[model]['forced_response']
+        
+        for run in normalized_train_data[model]:
+            if run == 'forced_response':
+                continue
+            test_run = normalized_train_data[model][run]
+            
+            # Calculate the MSE
+            run_mse = calculate_mse(test_run, Brr, ground_truth)
+            
+            avg_mse_values_train[model].append(run_mse)
+    
+    return avg_mse_values_train
+        
 def preprocess_data(data_path, filename, min_runs=4):
     """
     Preprocess the data by performing all the necessary steps in one call.
@@ -429,7 +469,7 @@ def update_animation(i, im, data):
     im.set_data(data[i])
     return [im]
 
-def animate_data(data, interval=200, cmap='viridis'):
+def animate_data(data, title, interval=200, cmap='viridis'):
     """
     Animate the data to visualize the evolution of the response over time.
     
@@ -443,7 +483,7 @@ def animate_data(data, interval=200, cmap='viridis'):
     fig, ax = plt.subplots()
     im = ax.imshow(data[0], cmap=cmap, animated = True)
     plt.colorbar(im, ax=ax, label = 'Temperature (°C)')
-    ax.set_title('Data Animation Over Time')
+    ax.set_title(title)
     ax.set_xlabel('Longitude')
     ax.set_ylabel('Latitude')
     
@@ -453,3 +493,50 @@ def animate_data(data, interval=200, cmap='viridis'):
                                   fargs=(im, data), frames=len(data), interval=interval, blit=True)
     plt.close(fig)
     return ani
+
+def plot_animations(test_model, normalized_test_data, Brr, nan_mask, num_runs):
+    """
+    Plot the animations for all test runs and the ground truth.
+    
+    Args:
+        test_model (str): The test model name.
+        normalized_test_data (dict): Dictionary containing the normalized test data.
+        Brr (np.array): Reduced-rank weight matrix.
+        nan_mask (np.array): Boolean mask indicating NaN positions.
+    """
+    predictions = True
+    test_runs = [run for run in normalized_test_data[test_model].keys() if run != 'forced_response']
+    ground_truth = normalized_test_data[test_model]['forced_response']
+
+    for counter, run in enumerate(test_runs):
+        if counter == num_runs:
+            break # Stop after num_runs runs
+        test_run = normalized_test_data[test_model][run]
+        
+        # Make the prediction
+        prediction = test_run @ Brr
+        
+        # Calculate the MSE
+        input_mse = calculate_mse(test_run, Brr, ground_truth)
+        prediction_mse = calculate_mse(prediction, Brr, ground_truth)
+        
+        # Re-add NaN values to the data matrices
+        prediction = readd_nans_to_grid(prediction, nan_mask, predictions)
+        test_run = readd_nans_to_grid(test_run, nan_mask, predictions)
+        ground_truth_with_nans = readd_nans_to_grid(ground_truth, nan_mask, predictions)
+        
+        # Reshape the data to match the expected dimensions for imshow
+        prediction = prediction.reshape(-1, nan_mask.shape[0], nan_mask.shape[1])
+        test_run = test_run.reshape(-1, nan_mask.shape[0], nan_mask.shape[1])
+        ground_truth_with_nans = ground_truth_with_nans.reshape(-1, nan_mask.shape[0], nan_mask.shape[1])
+        
+        # Create animations with titles
+        pred_animation = animate_data(prediction, interval=200, cmap='viridis', title=f'Prediction: {test_model} - {run} (MSE: {prediction_mse:.2f})')
+        test_run_animation = animate_data(test_run, interval=200, cmap='viridis', title=f'Input: {test_model} - {run} (MSE: {input_mse:.2f})')
+        ground_truth_animation = animate_data(ground_truth_with_nans, interval=200, cmap='viridis', title=f'Ground Truth: {test_model}')
+        
+        # Display animations
+        display(HTML(ground_truth_animation.to_html5_video()))
+        display(HTML(pred_animation.to_html5_video()))
+        display(HTML(test_run_animation.to_html5_video()))
+    return None
