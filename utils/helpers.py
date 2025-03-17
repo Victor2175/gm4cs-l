@@ -442,10 +442,13 @@ def animate_data(data, interval=200, cmap='viridis'):
     """
     fig, ax = plt.subplots()
     im = ax.imshow(data[0], cmap=cmap)
+    # add units to the colorbar
     plt.colorbar(im, ax=ax)
+    im.colorbar.set_label('Temperature (°C)')
     ax.set_title('Data Animation Over Time')
     ax.set_xlabel('Longitude')
     ax.set_ylabel('Latitude')
+    
     
     # blit = True to only update the parts that have changed
     ani = animation.FuncAnimation(fig, update_animation, init_func=lambda: init_animation(im, data),
