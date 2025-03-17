@@ -5,6 +5,7 @@ import random
 import pandas as pd
 from sklearn.metrics import mean_squared_error
 import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 import seaborn as sns
 import random
 from tqdm import tqdm
@@ -114,7 +115,8 @@ def center_data(filtered_data):
     for model in tqdm(filtered_data):
         runs_stack = np.stack([filtered_data[model][run] for run in filtered_data[model]], axis=0)
         grid_average = np.nanmean(runs_stack, axis=(0, 1))
-        centered_data[model] = {run: filtered_data[model][run] - grid_average for run in filtered_data[model]}
+        grid_std = np.nanstd(runs_stack, axis=(0, 1))
+        centered_data[model] = {run: (filtered_data[model][run] - grid_average) / grid_std for run in filtered_data[model]}
         forced_response = np.nanmean(np.stack(list(centered_data[model].values()), axis=0), axis=0)
         centered_data[model]['forced_response'] = forced_response
     return centered_data
@@ -184,7 +186,7 @@ def normalize_data(train_data, test_data):
         
         # Compute the mean and std for each grid square and each timestamp for the current model
         mean_and_time = np.mean(all_runs, axis=(0, 1)) # Shape (d,)
-        std_ = np.std(all_runs, axis=0) # Shape (T x d)
+        std_ = np.std(all_runs, axis=(0, 1)) # Shape (d,) this is done since using axis = 0 gives very small values which leads to instability
         
         # Store statistics
         training_statistics[model] = {'mean': mean_and_time, 'std': std_}
@@ -196,7 +198,7 @@ def normalize_data(train_data, test_data):
     all_runs = np.stack([train_data[model][run] for model in train_data for run in train_data[model]], axis=0)
 
     full_mean_and_time = np.mean(all_runs, axis=(0, 1)) # Shape (d,)
-    full_std = np.std(all_runs, axis=0) # Shape (T x d)
+    full_std = np.std(all_runs, axis=(0, 1)) # Shape (d,)  this is done since with axis = 0, we get instable values (very small)
     
     testing_statistics = {'mean': full_mean_and_time, 'std': full_std}
     
@@ -210,7 +212,7 @@ def normalize_data(train_data, test_data):
                 
         test_runs = np.stack([test_data[model][run] for run in test_data[model]], axis=0) # Shape (# Runs x T x d)
         test_mean = np.mean(test_runs, axis=(0, 1)) # Shape (d,)
-        test_std = np.std(test_runs, axis=0) # Shape (T x d)
+        test_std = np.std(test_runs, axis=(0, 1)) # Shape (d,) Not to be used on the runs
         
         # Apply the test mean and std to the forced response (MUST NOT BE USED ON THE RUNS)
         normalized_test_data[model]['forced_response'] = (test_data[model]['forced_response'] - test_mean) / test_std
@@ -401,3 +403,51 @@ def loo_cross_validation(data, lambdas, rank=15):
             mse_distribution[lambda_][test_model].extend(mse_values)
     
     return mse_distribution
+
+def init_animation(im, data):
+    """
+    Initialization function for the animation.
+    Args:
+        im (matplotlib.image.AxesImage): Image to initialize.
+        data (np.array): Data to display.
+    Returns:
+        tuple: Tuple containing the initialized image.
+    """
+    im.set_data(data[0])
+    return [im]
+
+def update_animation(i, im, data):
+    """
+    Function to update the figure in the animation.
+    Args:
+        i (int): Frame number.
+        im (matplotlib.image.AxesImage): Image to update.
+        data (np.array): Data to display.
+    Returns:
+        tuple: Tuple containing the updated image.
+    """
+    im.set_data(data[i])
+    return [im]
+
+def animate_data(data, interval=200, cmap='viridis'):
+    """
+    Animate the data to visualize the evolution of the response over time.
+    
+    Args:
+        data (np.array): Array of shape (T, latitude, longitude).
+        interval (int): Interval between frames in milliseconds.
+        cmap (str): Name of the colormap to use.
+    Returns:
+        matplotlib.animation.FuncAnimation: Animation object.
+    """
+    fig, ax = plt.subplots()
+    im = ax.imshow(data[0], cmap=cmap)
+    plt.colorbar(im, ax=ax)
+    ax.set_title('Data Animation Over Time')
+    ax.set_xlabel('Longitude')
+    ax.set_ylabel('Latitude')
+    
+    # blit = True to only update the parts that have changed
+    ani = animation.FuncAnimation(fig, update_animation, init_func=lambda: init_animation(im, data),
+                                  fargs=(im, data), frames=len(data), interval=interval, blit=True)
+    return ani
