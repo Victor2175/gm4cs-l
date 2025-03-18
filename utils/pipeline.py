@@ -39,7 +39,7 @@ def preprocess_data(data_path, filename, min_runs=4):
     
     return data_without_nans, nan_mask
 
-def loo_cross_validation(data, lambdas, rank=15):
+def loo_cross_validation(data, lambdas, rank=10):
     """
     Perform leave-one-out cross-validation to get a distribution of the MSE for different values of lambda.
     
@@ -51,8 +51,8 @@ def loo_cross_validation(data, lambdas, rank=15):
     Returns:
         dict: Dictionary containing the MSE distribution for each lambda.
     """
-    mse_distribution = {lambda_: {} for lambda_ in lambdas}
     models = list(data.keys())
+    mse_distribution = {model: {lambda_: [] for lambda_ in lambdas} for model in models}
     
     for test_model in tqdm(models):
         # Split the data into training and testing sets according to the leave-one-out scheme
@@ -74,7 +74,10 @@ def loo_cross_validation(data, lambdas, rank=15):
         
         for lambda_ in lambdas:
             # Perform reduced rank regression
-            B_rrr, _ = reduced_rank_regression(X_train, Y_train, rank, lambda_)
+            B_rrr, B_ols = reduced_rank_regression(X_train, Y_train, rank, lambda_)
+            
+            # Perform Sanity check
+            _ = sanity_check(B_rrr, B_ols, rank, True)
             
             # Calculate the MSE for each test run
             mse_values = []
@@ -84,8 +87,6 @@ def loo_cross_validation(data, lambdas, rank=15):
                 mse_values.append(mse)
             
             # Store the MSE values for the current model and lambda
-            if test_model not in mse_distribution[lambda_]:
-                mse_distribution[lambda_][test_model] = []
-            mse_distribution[lambda_][test_model].extend(mse_values)
+            mse_distribution[test_model][lambda_].extend(mse_values)
     
     return mse_distribution

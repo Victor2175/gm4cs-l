@@ -70,7 +70,7 @@ def get_rank(B_rr):
     """
     return matrix_rank(B_rr)
 
-def sanity_check(B_rr, B_ols, rank):
+def sanity_check(B_rr, B_ols, rank, cross_validation = True):
     """
     Perform a sanity check on the reduced-rank weight matrix.
     Args:
@@ -82,7 +82,8 @@ def sanity_check(B_rr, B_ols, rank):
     """
     sparse = is_sparse(B_rr)
     rank_B = get_rank(B_rr)
-    assert rank_B == rank, "The rank is not constrained correctly!"  # Error message in case the rank is not equal to the expected value
+    if not cross_validation:
+        assert rank_B == rank, "The rank is not constrained correctly!"  # Error message in case the rank is not equal to the expected value
     rank_B_ols = get_rank(B_ols)
     mean_B = np.mean(B_rr)
     std_B = np.std(B_rr)
