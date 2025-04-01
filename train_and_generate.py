@@ -42,7 +42,6 @@ def main(args):
         models = random.sample(models, min(args.num_models, len(models)))
         print(f"Randomly selected {len(models)} models for testing: {models}")
     subset_data = {model: data[model] for model in models}
-    print(f"Models selected for testing: {models}")
 
     # Perform leave-one-out cross-validation
     print("Performing leave-one-out cross-validation...")
