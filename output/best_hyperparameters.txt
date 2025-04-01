@@ -1,3 +1,0 @@
-Best Rank: 2
-Best Lambda: 1
-Weighted Score: 0.9269
