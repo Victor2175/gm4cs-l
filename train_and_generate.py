@@ -19,16 +19,17 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 def main(args):
     # Define paths and parameters
+    os.makedirs(args.output_dir, exist_ok=True)
     data_path = args.data_path
     filename = args.filename
     output_dir = args.output_dir
     mean_weight = args.mean_weight
     variance_weight = args.variance_weight
     on_cluser = args.oncluster
-    # lambdas = [1, 10, 50, 100, 200]  # Example lambda values
-    # ranks = [2, 5, 10, 50, 100]  # Example rank values
-    lambdas = [100]
-    ranks = [10]
+    lambdas = [1, 10, 50, 100, 200]  # Example lambda values
+    ranks = [2, 5, 10, 50, 100]  # Example rank values
+    # lambdas = [100]
+    # ranks = [10]
     num_runs = args.num_runs
     color_limits = (-4, 4)
 
