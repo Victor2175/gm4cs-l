@@ -26,14 +26,16 @@ def main(args):
     variance_weight = args.variance_weight
     lambdas = [1, 10, 50, 100, 200]  # Example lambda values
     ranks = [2, 5, 10, 50, 100]  # Example rank values
+    # lambdas = [1, 100]
+    # ranks = [10]
     num_runs = args.num_runs
-    color_limits = (-2, 2)
+    color_limits = (-4, 4)
 
     # Preprocess the data
     data, nan_mask = preprocess_data(data_path, filename)
 
     # Select a subset of models for testing
-    random.seed(42)
+    random.seed(1)
     models = list(data.keys()) # List of all models
     # Select models for testing
     if args.all_models:
