@@ -30,7 +30,7 @@ def update_animation(i, im, data):
     im.set_data(data[i])
     return [im]
 
-def animate_data(data, title, interval=200, cmap='viridis'):
+def animate_data(data, title, interval=200, cmap='viridis', color_limits=None):
     """
     Animate the data to visualize the evolution of the response over time.
     
@@ -42,7 +42,8 @@ def animate_data(data, title, interval=200, cmap='viridis'):
         matplotlib.animation.FuncAnimation: Animation object.
     """
     fig, ax = plt.subplots()
-    im = ax.imshow(data[0], cmap=cmap, animated = True)
+    vmin, vmax = (color_limits if color_limits else (None, None))
+    im = ax.imshow(data[0], cmap=cmap, animated = True, vmin = vmin, vmax = vmax)
     plt.colorbar(im, ax=ax, label = 'Temperature (°C)')
     ax.set_title(title)
     ax.set_xlabel('Longitude')
@@ -55,7 +56,7 @@ def animate_data(data, title, interval=200, cmap='viridis'):
     plt.close(fig)
     return ani
 
-def plot_animations(test_model, normalized_test_data, Brr, nan_mask, num_runs):
+def plot_animations(test_model, normalized_test_data, Brr, nan_mask, num_runs, color_limits=None):
     """
     Plot the animations for all test runs and the ground truth.
     
@@ -92,9 +93,9 @@ def plot_animations(test_model, normalized_test_data, Brr, nan_mask, num_runs):
         ground_truth_with_nans = ground_truth_with_nans.reshape(-1, nan_mask.shape[0], nan_mask.shape[1])
         
         # Create animations with titles
-        pred_animation = animate_data(prediction, interval=200, cmap='viridis', title=f'Prediction: {test_model} - {run} (MSE: {prediction_mse:.2f})')
-        test_run_animation = animate_data(test_run, interval=200, cmap='viridis', title=f'Input: {test_model} - {run} (MSE: {input_mse:.2f})')
-        ground_truth_animation = animate_data(ground_truth_with_nans, interval=200, cmap='viridis', title=f'Ground Truth: {test_model}')
+        pred_animation = animate_data(prediction, interval=200, cmap='viridis', title=f'Prediction: {test_model} - {run} (MSE: {prediction_mse:.2f})', color_limits=color_limits)
+        test_run_animation = animate_data(test_run, interval=200, cmap='viridis', title=f'Input: {test_model} - {run} (MSE: {input_mse:.2f})', color_limits=color_limits)
+        ground_truth_animation = animate_data(ground_truth_with_nans, interval=200, cmap='viridis', title=f'Ground Truth: {test_model}', color_limits=color_limits)
         
         # Display animations
         display(HTML(ground_truth_animation.to_html5_video()))
