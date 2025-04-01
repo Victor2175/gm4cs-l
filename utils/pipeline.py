@@ -136,6 +136,8 @@ def plot_mse_distributions(mse_by_combination, ranks, lambdas, output_dir=None):
     plt.tight_layout()
     
     # Save or show the plot
+    # make the output_dir if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
         plot_path = os.path.join(output_dir, "mse_distributions_kde.png")
