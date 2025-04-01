@@ -19,7 +19,6 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 def main(args):
     # Define paths and parameters
-    os.makedirs(args.output_dir, exist_ok=True)
     data_path = args.data_path
     filename = args.filename
     output_dir = args.output_dir
