@@ -4,6 +4,9 @@ from regression import *
 from metrics import *
 from matplotlib import pyplot as plt
 from tqdm import tqdm
+from animation import plot_animations
+from data_processing import normalize_data, pool_data
+from regression import reduced_rank_regression
 import numpy as np
 import seaborn as sns
 import os
@@ -105,7 +108,7 @@ def loo_cross_validation(data, lambdas, ranks):
 
 def plot_mse_distributions(mse_by_combination, ranks, lambdas, output_dir=None):
     """
-    Plot the MSE distributions for each (rank, lambda) combination with density estimation and variance.
+    Plot the MSE distributions for each (rank, lambda) combination using KDE plots with variance annotations.
     
     Args:
         mse_by_combination (dict): Dictionary containing MSE distributions for each (rank, lambda) combination.
@@ -119,9 +122,8 @@ def plot_mse_distributions(mse_by_combination, ranks, lambdas, output_dir=None):
             plt.subplot(len(ranks), len(lambdas), i * len(lambdas) + j + 1)
             mse_values = mse_by_combination[(rank, lambda_)]
             
-            # Plot density estimation and boxplot
-            sns.kdeplot(mse_values, fill=True, alpha=0.5, label="Density")
-            plt.boxplot(mse_values, vert=True, patch_artist=True, positions=[0.5], widths=0.2)
+            # Plot density estimation
+            sns.kdeplot(mse_values, fill=True, alpha=0.5, label=f"Rank: {rank}, Lambda: {lambda_}")
             
             # Calculate and display variance
             variance = np.var(mse_values)
@@ -129,15 +131,16 @@ def plot_mse_distributions(mse_by_combination, ranks, lambdas, output_dir=None):
             plt.xlabel("MSE")
             plt.ylabel("Density")
             plt.grid(True)
+            plt.legend()
     
     plt.tight_layout()
     
     # Save or show the plot
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
-        plot_path = os.path.join(output_dir, "mse_distributions.png")
+        plot_path = os.path.join(output_dir, "mse_distributions_kde.png")
         plt.savefig(plot_path)
-        print(f"Saved MSE distribution plot at {plot_path}")
+        print(f"Saved MSE distribution KDE plot at {plot_path}")
     else:
         plt.show()
     plt.close()
@@ -359,3 +362,49 @@ def plot_final_mse_distribution(mse_losses, output_dir):
     plt.close()  # Close the plot to free memory
     print(f"Saved final MSE distribution plot at {plot_path}")
     return None
+
+def generate_and_save_animations(data, test_model, best_rank, best_lambda, nan_mask, num_runs=3, output_dir="output", color_limits=(-2, 2)):
+    """
+    Generate and save animations for a specified test model, including predictions, input data, and ground truth.
+    
+    Args:
+        data (dict): Preprocessed data containing models and their data.
+        test_model (str): The name of the model to use for testing.
+        best_rank (int): The best rank value for reduced rank regression.
+        best_lambda (float): The best lambda value for reduced rank regression.
+        nan_mask (np.ndarray): Mask for NaN values in the data.
+        num_runs (int): Number of test runs to animate.
+        output_dir (str): Directory to save the animations.
+        color_limits (tuple): Color limits for the animations.
+    """
+
+    # Split the data into training and testing sets
+    train_models = [model for model in data.keys() if model != test_model]
+    train_data = {model: data[model] for model in train_models}
+    test_data = {test_model: data[test_model]}
+
+    # Normalize the data
+    normalized_train_data, normalized_test_data, _, _ = normalize_data(train_data, test_data)
+
+    # Pool the training data
+    X_train, Y_train = pool_data(normalized_train_data)
+
+    # Perform reduced rank regression
+    B_rrr, _ = reduced_rank_regression(X_train, Y_train, rank=best_rank, lambda_=best_lambda)
+
+    # Create the output directory for animations
+    animation_output_dir = os.path.join(output_dir, "animations")
+    os.makedirs(animation_output_dir, exist_ok=True)
+
+    # Generate and save animations
+    plot_animations(
+        test_model=test_model,
+        normalized_test_data=normalized_test_data,
+        Brr=B_rrr,
+        nan_mask=nan_mask,
+        num_runs=num_runs,
+        color_limits=color_limits,
+        save_path=animation_output_dir
+    )
+
+    print(f"Animations saved in {animation_output_dir}")
