@@ -27,7 +27,7 @@ def main(args):
     on_cluser = args.oncluster
     lambdas = [1, 10, 50, 100, 200]  # Example lambda values
     ranks = [2, 5, 10, 50, 100]  # Example rank values
-    # lambdas = [1, 100]
+    # lambdas = [100]
     # ranks = [10]
     num_runs = args.num_runs
     color_limits = (-4, 4)
