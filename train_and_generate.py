@@ -41,7 +41,6 @@ def main(args):
     else:
         models = random.sample(models, min(args.num_models, len(models)))
         print(f"Randomly selected {len(models)} models for testing: {models}")
-    models = list(data.keys())
     subset_data = {model: data[model] for model in models}
     print(f"Models selected for testing: {models}")
 
