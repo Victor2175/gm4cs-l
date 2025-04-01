@@ -98,16 +98,35 @@ def plot_animations(test_model, normalized_test_data, Brr, nan_mask, num_runs, c
         ground_truth_save_path = f"{save_path}/ground_truth_{test_model}.mp4" if save_path else None
         
         # Create animations with titles
-        pred_animation = animate_data(prediction, interval=200, cmap='viridis', title=f'Prediction: {test_model} - {run} (MSE: {prediction_mse:.2f})', color_limits=color_limits)
-        test_run_animation = animate_data(test_run, interval=200, cmap='viridis', title=f'Input: {test_model} - {run} (MSE: {input_mse:.2f})', color_limits=color_limits)
-        ground_truth_animation = animate_data(ground_truth_with_nans, interval=200, cmap='viridis', title=f'Ground Truth: {test_model}', color_limits=color_limits)
+        pred_animation = animate_data(
+            prediction,
+            title=f'Prediction: {test_model} - {run} (MSE: {prediction_mse:.2f})',
+            interval=200,
+            cmap='viridis',
+            color_limits=color_limits
+        )
+        test_run_animation = animate_data(
+            test_run,
+            title=f'Input: {test_model} - {run} (MSE: {input_mse:.2f})',
+            interval=200,
+            cmap='viridis',
+            color_limits=color_limits
+        )
+        ground_truth_animation = animate_data(
+            ground_truth_with_nans,
+            title=f'Ground Truth: {test_model}',
+            interval=200,
+            cmap='viridis',
+            color_limits=color_limits
+        )
         
-        # Display animations
-        display(HTML(ground_truth_animation.to_html5_video()))
-        display(HTML(pred_animation.to_html5_video()))
-        display(HTML(test_run_animation.to_html5_video()))
+        if save_path is None:
+            # Display the animations in Jupyter Notebook
+            display(HTML(pred_animation.to_html5_video()))
+            display(HTML(test_run_animation.to_html5_video()))
+            display(HTML(ground_truth_animation.to_html5_video()))
         
-        if save_path:
+        else:
             pred_animation.save(pred_save_path, writer='ffmpeg', fps=15)
             test_run_animation.save(test_run_save_path, writer='ffmpeg', fps=15)
             ground_truth_animation.save(ground_truth_save_path, writer='ffmpeg', fps=15)

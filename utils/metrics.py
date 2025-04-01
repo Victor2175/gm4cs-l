@@ -88,8 +88,8 @@ def sanity_check(B_rr, B_ols, rank, cross_validation = True):
     mean_B = np.mean(B_rr)
     std_B = np.std(B_rr)
     
-    print(f"Is B_rr sparse: {sparse}")
-    print(f"The rank of Bols is {rank_B_ols} and the rank of B_rr is {rank_B}.")
-    print(f"The mean of B_rr is {mean_B} and the std is {std_B}.")
+    if sparse or rank_B != rank:
+        print(f"Is B_rr sparse: {sparse}")
+        print(f"The rank of Bols is {rank_B_ols} and the rank of B_rr is {rank_B}.")
     
     return sparse and rank_B == rank
