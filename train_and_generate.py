@@ -34,6 +34,13 @@ def main(args):
 
     # Select a subset of models for testing
     random.seed(42)
+    models = list(data.keys()) # List of all models
+    # Select models for testing
+    if args.all_models:
+        print("Using all models for testing.") # Don't change models
+    else:
+        models = random.sample(models, min(args.num_models, len(models)))
+        print(f"Randomly selected {len(models)} models for testing: {models}")
     models = list(data.keys())
     subset_data = {model: data[model] for model in models}
     print(f"Models selected for testing: {models}")
@@ -90,6 +97,8 @@ if __name__ == "__main__":
     parser.add_argument("--num_runs", type=int, default=3, help="Number of test runs to animate.")
     parser.add_argument("--mean_weight", type=float, default=0.7, help="Weight for the mean MSE in hyperparameter selection.")
     parser.add_argument("--variance_weight", type=float, default=0.3, help="Weight for the variance in hyperparameter selection.")
+    parser.add_argument("--num_models", type=int, default=2, help="Number of models to randomly select for testing.")
+    parser.add_argument("--all_models", action="store_true", help="Use all models for testing. Overrides --num_models.")
     args = parser.parse_args()
 
     # Run the main function
