@@ -363,7 +363,7 @@ def plot_final_mse_distribution(mse_losses, output_dir):
     print(f"Saved final MSE distribution plot at {plot_path}")
     return None
 
-def generate_and_save_animations(data, test_model, best_rank, best_lambda, nan_mask, num_runs=3, output_dir="output", color_limits=(-2, 2)):
+def generate_and_save_animations(data, test_model, best_rank, best_lambda, nan_mask, num_runs=3, output_dir="output", color_limits=(-2, 2), on_cluster=False):
     """
     Generate and save animations for a specified test model, including predictions, input data, and ground truth.
     
@@ -404,7 +404,8 @@ def generate_and_save_animations(data, test_model, best_rank, best_lambda, nan_m
         nan_mask=nan_mask,
         num_runs=num_runs,
         color_limits=color_limits,
-        save_path=animation_output_dir
+        save_path=animation_output_dir,
+        on_cluster=on_cluster
     )
 
     print(f"Animations saved in {animation_output_dir}")

@@ -56,7 +56,7 @@ def animate_data(data, title, interval=200, cmap='viridis', color_limits=None):
     plt.close(fig)
     return ani
 
-def plot_animations(test_model, normalized_test_data, Brr, nan_mask, num_runs, color_limits=None, save_path=None):
+def plot_animations(test_model, normalized_test_data, Brr, nan_mask, num_runs, color_limits=None, save_path=None, on_cluster=False):
     """
     Plot the animations for all test runs and the ground truth.
     
@@ -127,7 +127,10 @@ def plot_animations(test_model, normalized_test_data, Brr, nan_mask, num_runs, c
             display(HTML(ground_truth_animation.to_html5_video()))
         
         else:
-            pred_animation.save(pred_save_path, writer='ffmpeg', fps=15)
-            test_run_animation.save(test_run_save_path, writer='ffmpeg', fps=15)
-            ground_truth_animation.save(ground_truth_save_path, writer='ffmpeg', fps=15)
+            # Use an alternative writer if on the cluster
+            writer = 'pillow' if on_cluster else 'ffmpeg'
+            pred_animation.save(pred_save_path, writer=writer, fps=15)
+            test_run_animation.save(test_run_save_path, writer=writer, fps=15)
+            ground_truth_animation.save(ground_truth_save_path, writer=writer, fps=15)
+            print(f"Saved animations using writer: {writer}")
     return None

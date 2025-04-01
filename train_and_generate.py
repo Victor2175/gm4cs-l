@@ -24,6 +24,7 @@ def main(args):
     output_dir = args.output_dir
     mean_weight = args.mean_weight
     variance_weight = args.variance_weight
+    on_cluser = args.oncluster
     lambdas = [1, 10, 50, 100, 200]  # Example lambda values
     ranks = [2, 5, 10, 50, 100]  # Example rank values
     # lambdas = [1, 100]
@@ -50,10 +51,10 @@ def main(args):
     mse_distributions, mse_by_combination = loo_cross_validation(subset_data, lambdas, ranks)
 
     # Plot the mse distributions for each combination of lambda and rank
-    plot_mse_distributions(mse_by_combination, ranks, lambdas, output_dir='output')
+    plot_mse_distributions(mse_by_combination, ranks, lambdas, output_dir=output_dir)
     
     # Plot and save the MSE distributions for each model
-    plot_mse_distributions_per_model(mse_distributions, models, ranks, lambdas, output_dir='output')
+    plot_mse_distributions_per_model(mse_distributions, models, ranks, lambdas, output_dir=output_dir)
 
     # Select the most robust hyperparameters
     print("Selecting the most robust hyperparameters...")
@@ -68,7 +69,7 @@ def main(args):
     
     # Perform final cross-validation using the best rank and lambda
     final_mse_losses = final_cross_validation(subset_data, best_rank, best_lambda)
-    plot_final_mse_distribution(final_mse_losses, output_dir='output')
+    plot_final_mse_distribution(final_mse_losses, output_dir=output_dir)
     
     # Choose a random model to test on
     test_model = random.choice(models)
@@ -84,7 +85,8 @@ def main(args):
         nan_mask=nan_mask,
         num_runs=num_runs,
         output_dir=output_dir,
-        color_limits=color_limits
+        color_limits=color_limits,
+        on_cluster=on_cluser
     )
     print("Training and animation generation complete.")
 
@@ -93,12 +95,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train on M-1 models and generate animations for a test model.")
     parser.add_argument("--data_path", type=str, required=True, help="Path to the data directory.")
     parser.add_argument("--filename", type=str, required=True, help="Name of the data file.")
-    parser.add_argument("--output_dir", type=str, default="output", help="Directory to save outputs.")
+    parser.add_argument("--output_dir", type=str, default="outputs", help="Directory to save outputs.")
     parser.add_argument("--num_runs", type=int, default=3, help="Number of test runs to animate.")
     parser.add_argument("--mean_weight", type=float, default=0.7, help="Weight for the mean MSE in hyperparameter selection.")
     parser.add_argument("--variance_weight", type=float, default=0.3, help="Weight for the variance in hyperparameter selection.")
     parser.add_argument("--num_models", type=int, default=2, help="Number of models to randomly select for testing.")
     parser.add_argument("--all_models", action="store_true", help="Use all models for testing. Overrides --num_models.")
+    parser.add_argument("--oncluster", action="store_true", help="Use alternative video encoding for cluster environments.")
     args = parser.parse_args()
 
     # Run the main function
