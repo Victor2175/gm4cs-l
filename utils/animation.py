@@ -56,7 +56,7 @@ def animate_data(data, title, interval=200, cmap='viridis', color_limits=None):
     plt.close(fig)
     return ani
 
-def plot_animations(test_model, normalized_test_data, Brr, nan_mask, num_runs, color_limits=None):
+def plot_animations(test_model, normalized_test_data, Brr, nan_mask, num_runs, color_limits=None, save_path=None):
     """
     Plot the animations for all test runs and the ground truth.
     
@@ -93,6 +93,11 @@ def plot_animations(test_model, normalized_test_data, Brr, nan_mask, num_runs, c
         ground_truth_with_nans = ground_truth_with_nans.reshape(-1, nan_mask.shape[0], nan_mask.shape[1])
         
         # Create animations with titles
+        pred_save_path = f"{save_path}/prediction_{test_model}_{run}.mp4" if save_path else None
+        test_run_save_path = f"{save_path}/input_{test_model}_{run}.mp4" if save_path else None
+        ground_truth_save_path = f"{save_path}/ground_truth_{test_model}.mp4" if save_path else None
+        
+        # Create animations with titles
         pred_animation = animate_data(prediction, interval=200, cmap='viridis', title=f'Prediction: {test_model} - {run} (MSE: {prediction_mse:.2f})', color_limits=color_limits)
         test_run_animation = animate_data(test_run, interval=200, cmap='viridis', title=f'Input: {test_model} - {run} (MSE: {input_mse:.2f})', color_limits=color_limits)
         ground_truth_animation = animate_data(ground_truth_with_nans, interval=200, cmap='viridis', title=f'Ground Truth: {test_model}', color_limits=color_limits)
@@ -101,4 +106,9 @@ def plot_animations(test_model, normalized_test_data, Brr, nan_mask, num_runs, c
         display(HTML(ground_truth_animation.to_html5_video()))
         display(HTML(pred_animation.to_html5_video()))
         display(HTML(test_run_animation.to_html5_video()))
+        
+        if save_path:
+            pred_animation.save(pred_save_path, writer='ffmpeg', fps=15)
+            test_run_animation.save(test_run_save_path, writer='ffmpeg', fps=15)
+            ground_truth_animation.save(ground_truth_save_path, writer='ffmpeg', fps=15)
     return None
