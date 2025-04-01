@@ -15,7 +15,7 @@ def reduced_rank_regression(X, y, rank, lambda_):
     # Fit OLS
     print("Fitting OLS...")
     identity = np.eye(X.shape[1])
-    B_ols = np.linalg.inv(X.T @ X + lambda_ * identity) @ X.T @ y # Analytical solution of ridge regression (pseudo inverse)
+    B_ols = np.linalg.pinv(X.T @ X + lambda_ * identity) @ X.T @ y # Analytical solution of ridge regression (pseudo inverse)
     # Compute SVD
     U, s, Vt = np.linalg.svd(X @ B_ols, full_matrices=False)
     
