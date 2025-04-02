@@ -194,13 +194,18 @@ def normalize_data(train_data, test_data, center = True):
     return normalized_train_data, normalized_test_data, training_statistics, testing_statistics
 
 def pool_data(data):
+    print("\nPooling data...")
     X_all_list = []
     Y_all_list = []
-    print("\nPooling data...")
-    for model in tqdm(data):
-        for run in data[model]:
-            X_all_list.append(data[model][run])
-            Y_all_list.append(data[model]['forced_response'])
+
+    for model, model_data in tqdm(data.items()):  # Cache `data[model]` as `model_data`
+        forced_response = model_data['forced_response']  # Cache 'forced_response'
+        for run, run_data in model_data.items():
+            if run == 'forced_response':  # Skip 'forced_response' key
+                continue
+            X_all_list.append(run_data)
+            Y_all_list.append(forced_response)
+
     print("Data pooled.")
     return np.concatenate(X_all_list, axis=0), np.concatenate(Y_all_list, axis=0)
 
