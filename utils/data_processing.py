@@ -128,7 +128,7 @@ def normalize_data(train_data, test_data, center = True):
         dict: Normalized test data.
         dict: Scalers used for normalization.
     """
-    print("Normalizing data...")
+    print("\nNormalizing data...")
     # Normalize training data using mean and std for each model separately
     normalized_train_data = {}
     training_statistics = {}
@@ -196,7 +196,7 @@ def normalize_data(train_data, test_data, center = True):
 def pool_data(data):
     X_all_list = []
     Y_all_list = []
-    print("Pooling data...")
+    print("\nPooling data...")
     for model in tqdm(data):
         for run in data[model]:
             X_all_list.append(data[model][run])

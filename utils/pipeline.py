@@ -193,34 +193,35 @@ def select_robust_hyperparameters(mse_by_combination, mean_weight, variance_weig
 
     return best_rank_lambda, best_score
 
-def plot_mse_distributions_per_model(mse_distributions, models, ranks, lambdas, output_dir):
+def plot_mse_distributions_per_model(mse_distributions, models, output_dir):
     """
     Plot and save the MSE distributions for each model using boxplots.
-    
+
     Args:
         mse_distributions (dict): Dictionary containing MSE distributions for each model, rank, and lambda.
         models (list): List of model names.
-        ranks (list): List of rank values.
-        lambdas (list): List of lambda values.
         output_dir (str): Directory to save the plots.
     """
     os.makedirs(output_dir, exist_ok=True)
-    
+
     for model in models:
-        plt.figure(figsize=(12, 6))
-        for i, rank in enumerate(ranks):
-            plt.subplot(1, len(ranks), i + 1)
-            data_to_plot = [mse_distributions[model][rank][lambda_] for lambda_ in lambdas]
-            plt.boxplot(data_to_plot, labels=[f'Lambda: {lambda_}' for lambda_ in lambdas], patch_artist=True)
-            plt.xlabel('Lambda')
-            plt.ylabel('MSE')
-            plt.title(f'Rank: {rank}')
-            plt.grid(True)
-        plt.suptitle(f'MSE Distributions for Model: {model}')
-        plt.tight_layout(rect=[0, 0, 1, 0.95])
-        
+        plt.figure(figsize=(8, 6))  # Adjust the figure size as needed
+
+        # Aggregate all MSE values for the model across ranks and lambdas
+        mse_values = []
+        for rank in mse_distributions[model]:
+            for lambda_ in mse_distributions[model][rank]:
+                mse_values.extend(mse_distributions[model][rank][lambda_])
+
+        # Plot a single boxplot for the aggregated MSE values
+        plt.boxplot(mse_values, patch_artist=True)
+        plt.xlabel('Model')
+        plt.ylabel('MSE')
+        plt.title(f'MSE Distribution for Model: {model}')
+        plt.grid(True)
+
         # Save the plot
-        plot_path = os.path.join(output_dir, f"mse_distributions_{model}.png")
+        plot_path = os.path.join(output_dir, f"mse_distribution_{model}.png")
         plt.savefig(plot_path)
         plt.close()  # Close the plot to free memory
         print(f"Saved MSE distribution plot for model {model} at {plot_path}")
