@@ -25,6 +25,7 @@ def main(args):
     mean_weight = args.mean_weight
     variance_weight = args.variance_weight
     on_cluser = args.oncluster
+    center = args.center
     lambdas = [1, 10, 50, 100, 200]  # Example lambda values
     ranks = [2, 5, 10, 50, 100]  # Example rank values
     # lambdas = [100]
@@ -48,7 +49,7 @@ def main(args):
 
     # Perform leave-one-out cross-validation
     print("Performing leave-one-out cross-validation...")
-    mse_distributions, mse_by_combination = loo_cross_validation(subset_data, lambdas, ranks)
+    mse_distributions, mse_by_combination = loo_cross_validation(subset_data, lambdas, ranks, center=center)
 
     # Plot the mse distributions for each combination of lambda and rank
     plot_mse_distributions(mse_by_combination, ranks, lambdas, output_dir=output_dir)
@@ -102,6 +103,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_models", type=int, default=2, help="Number of models to randomly select for testing.")
     parser.add_argument("--all_models", action="store_true", help="Use all models for testing. Overrides --num_models.")
     parser.add_argument("--oncluster", action="store_true", help="Use alternative video encoding for cluster environments.")
+    parser.add_argument("--center", action="store_true", help="Center the data before training.")
     args = parser.parse_args()
 
     # Run the main function

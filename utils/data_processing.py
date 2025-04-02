@@ -115,7 +115,7 @@ def remove_nans_from_grid(data, nan_mask):
     print("NaN values removed.")
     return data
 
-def normalize_data(train_data, test_data):
+def normalize_data(train_data, test_data, center = True):
     """
     Normalize the data using the mean and standard deviation of each model (for the training set)
     Then normalize the testing data using the mean and std calculated over all runs in the training set.
@@ -140,21 +140,31 @@ def normalize_data(train_data, test_data):
         
         # Compute the mean and std for each grid square and each timestamp for the current model
         mean_and_time = np.mean(all_runs, axis=(0, 1)) # Shape (d,)
-        std_ = np.std(all_runs, axis=(0, 1)) # Shape (d,) this is done since using axis = 0 gives very small values which leads to instability
-        
-        # Store statistics
-        training_statistics[model] = {'mean': mean_and_time, 'std': std_}
+        if not center:
+            std_ = np.std(all_runs, axis=(0, 1)) # Shape (d,) this is done since using axis = 0 gives very small values which leads to instability
+            # Store the mean and std for the current model
+            training_statistics[model] = {'mean': mean_and_time, 'std': std_}
+        else:
+            # Only store the mean since the std is very inaccurate on the test set
+            training_statistics[model] = {'mean': mean_and_time}
                 
         # Normalize the training data for the current model (including the forced response)
-        normalized_train_data[model] = {run: (model_runs[run] - mean_and_time) / std_ for run in model_runs}
+        if not center:
+            normalized_train_data[model] = {run: (model_runs[run] - mean_and_time) / std_ for run in model_runs}
+        else:
+            # Center the data with the mean
+            normalized_train_data[model] = {run: (model_runs[run] - mean_and_time) for run in model_runs}
 
     # Compute the mean and std for each grid square per time stamp but for all the models together
     all_runs = np.stack([train_data[model][run] for model in train_data for run in train_data[model]], axis=0)
 
     full_mean_and_time = np.mean(all_runs, axis=(0, 1)) # Shape (d,)
-    full_std = np.std(all_runs, axis=(0, 1)) # Shape (d,)  this is done since with axis = 0, we get instable values (very small)
-    
-    testing_statistics = {'mean': full_mean_and_time, 'std': full_std}
+    if not center:
+        full_std = np.std(all_runs, axis=(0, 1)) # Shape (d,)  this is done since with axis = 0, we get instable values (very small)
+        testing_statistics = {'mean': full_mean_and_time, 'std': full_std}
+    else:
+        # Only store the mean since the std is very inaccurate on the test set
+        testing_statistics = {'mean': full_mean_and_time}
     
     # Normalize the test data using the computed mean and std for all models together
     normalized_test_data = {}
@@ -162,14 +172,22 @@ def normalize_data(train_data, test_data):
         normalized_test_data[model] = {}
         for run in test_data[model]:
             if run != 'forced_response':
-                normalized_test_data[model][run] = (test_data[model][run] - full_mean_and_time) / full_std
+                if not center:
+                    # Normalize the test data using the mean and std for all models together
+                    normalized_test_data[model][run] = (test_data[model][run] - full_mean_and_time) / full_std
+                else:
+                    # Center the data with the mean
+                    normalized_test_data[model][run] = (test_data[model][run] - full_mean_and_time)
                 
         test_runs = np.stack([test_data[model][run] for run in test_data[model]], axis=0) # Shape (# Runs x T x d)
         test_mean = np.mean(test_runs, axis=(0, 1)) # Shape (d,)
-        test_std = np.std(test_runs, axis=(0, 1)) # Shape (d,) Not to be used on the runs
-        
-        # Apply the test mean and std to the forced response (MUST NOT BE USED ON THE RUNS)
-        normalized_test_data[model]['forced_response'] = (test_data[model]['forced_response'] - test_mean) / test_std
+        if not center:
+            test_std = np.std(test_runs, axis=(0, 1)) # Shape (d,) Not to be used on the runs
+            # Apply the test mean and std to the forced response (MUST NOT BE USED ON THE RUNS)
+            normalized_test_data[model]['forced_response'] = (test_data[model]['forced_response'] - test_mean) / test_std
+        else:
+            # Center the data with the mean
+            normalized_test_data[model]['forced_response'] = (test_data[model]['forced_response'] - test_mean)
 
     print("Data normalization completed.")
     

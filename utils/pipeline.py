@@ -47,7 +47,7 @@ def preprocess_data(data_path, filename, min_runs=4):
     
     return data_without_nans, nan_mask
 
-def loo_cross_validation(data, lambdas, ranks):
+def loo_cross_validation(data, lambdas, ranks, center=True):
     """
     Perform leave-one-out cross-validation to get a distribution of the MSE for different values of lambda.
     
@@ -77,7 +77,7 @@ def loo_cross_validation(data, lambdas, ranks):
         assert len(test_data) > 0, f"Test data for model {test_model} is empty."
         
         # Normalize the data
-        normalized_train_data, normalized_test_data, _, _ = normalize_data(train_data, test_data)
+        normalized_train_data, normalized_test_data, _, _ = normalize_data(train_data, test_data, center=center)
         
         # Pool the training data
         X_train, Y_train = pool_data(normalized_train_data)
