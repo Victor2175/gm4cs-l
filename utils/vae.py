@@ -41,16 +41,20 @@ class VAE(nn.Module):
             nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
             nn.ReLU()
         )
-        self.flattened_size = 128 * 41 * 41  # Update this based on the encoder's output shape
+        # Recalculate the flattened size based on input dimensions (165x6523)
+        # After first Conv2d: (32, 165, 6523)
+        # After second Conv2d: (64, 83, 3262)
+        # After third Conv2d: (128, 42, 1631)
+        self.flattened_size = 128 * 42 * 1631
         self.fc_mean = nn.Linear(self.flattened_size, latent_dim)
         self.fc_logvar = nn.Linear(self.flattened_size, latent_dim)
         
         # Decoder
         self.fc_decode = nn.Linear(latent_dim, self.flattened_size)
         self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=(1, 1)),
             nn.ReLU(),
-            nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=(1, 1)),
             nn.ReLU(),
             nn.ConvTranspose2d(32, input_channels, kernel_size=3, stride=1, padding=1),
             nn.Sigmoid()
@@ -68,7 +72,7 @@ class VAE(nn.Module):
 
     def decode(self, z):
         h = self.fc_decode(z)
-        h = h.view(h.size(0), 128, 41, 41)  # Reshape to match the decoder's input
+        h = h.view(h.size(0), 128, 42, 1631)  # Reshape to match the decoder's input
         return self.decoder(h)
 
     def forward(self, x):
