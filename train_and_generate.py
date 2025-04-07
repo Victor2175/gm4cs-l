@@ -55,7 +55,7 @@ def main(args):
     plot_mse_distributions(mse_by_combination, ranks, lambdas, output_dir=output_dir)
     
     # Plot and save the MSE distributions for each model
-    plot_mse_distributions_per_model(mse_distributions, models, ranks, lambdas, output_dir=output_dir)
+    plot_mse_distributions_per_model(mse_distributions, models, output_dir=output_dir)
 
     # Select the most robust hyperparameters
     print("Selecting the most robust hyperparameters...")
