@@ -85,25 +85,29 @@ def train_vae(model, data_loader, optimizer, epochs, device='cpu'):
     for epoch in range(epochs):
         overall_loss = 0
         for batch_idx, batch in enumerate(data_loader):
-            x = batch['input'].view(batch['input'].size(0), -1).to(device)  # Flatten input
+            batch_loss = 0
+            for sample_idx in range(batch['input'].size(0)):  # Process one sample at a time
+                x = batch['input'][sample_idx].squeeze(0).view(-1).to(device)  # Flatten input
 
-            # Debugging: Print input shape
-            print(f"Batch {batch_idx + 1}: Input shape: {x.shape}")
+                # Debugging: Print input shape
+                print(f"Batch {batch_idx + 1}, Sample {sample_idx + 1}: Input shape: {x.shape}")
 
-            optimizer.zero_grad()
+                optimizer.zero_grad()
 
-            try:
-                x_hat, mean, logvar = model(x)
-            except RuntimeError as e:
-                print(f"Error during forward pass: {e}")
-                print(f"Model input shape: {x.shape}")
-                raise
+                try:
+                    x_hat, mean, logvar = model(x)
+                except RuntimeError as e:
+                    print(f"Error during forward pass: {e}")
+                    print(f"Model input shape: {x.shape}")
+                    raise
 
-            loss = vae_loss_function(x, x_hat, mean, logvar)
+                loss = vae_loss_function(x, x_hat, mean, logvar)
 
-            overall_loss += loss.item()
+                batch_loss += loss.item()
 
-            loss.backward()
-            optimizer.step()
+                loss.backward()
+                optimizer.step()
+
+            overall_loss += batch_loss
 
         print(f"Epoch {epoch + 1}, Average Loss: {overall_loss / len(data_loader.dataset)}")
