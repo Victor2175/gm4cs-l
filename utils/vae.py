@@ -29,91 +29,81 @@ class ClimateDataset(Dataset):
         return {'input': input_data, 'output': output_data}
 
 class VAE(nn.Module):
-    def __init__(self, input_channels, latent_dim):
+    def __init__(self, input_dim, hidden_dim=400, latent_dim=200, device='cpu'):
         super(VAE, self).__init__()
-        
+        self.device = device
+
         # Encoder
         self.encoder = nn.Sequential(
-            nn.Conv2d(input_channels, 32, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
-            nn.ReLU()
+            nn.Linear(input_dim, hidden_dim),
+            nn.LeakyReLU(0.2),
+            nn.Linear(hidden_dim, latent_dim),
+            nn.LeakyReLU(0.2)
         )
-        # Recalculate the flattened size based on input dimensions (165x6523)
-        # After first Conv2d: (32, 165, 6523)
-        # After second Conv2d: (64, 83, 3262)
-        # After third Conv2d: (128, 42, 1631)
-        self.flattened_size = 128 * 42 * 1631
-        self.fc_mean = nn.Linear(self.flattened_size, latent_dim)
-        self.fc_logvar = nn.Linear(self.flattened_size, latent_dim)
-        
+
+        # Latent mean and variance
+        self.mean_layer = nn.Linear(latent_dim, 2)
+        self.logvar_layer = nn.Linear(latent_dim, 2)
+
         # Decoder
-        self.fc_decode = nn.Linear(latent_dim, self.flattened_size)
         self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=(1, 1)),
-            nn.ReLU(),
-            nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=(1, 1)),
-            nn.ReLU(),
-            nn.ConvTranspose2d(32, input_channels, kernel_size=3, stride=1, padding=1),
+            nn.Linear(2, latent_dim),
+            nn.LeakyReLU(0.2),
+            nn.Linear(latent_dim, hidden_dim),
+            nn.LeakyReLU(0.2),
+            nn.Linear(hidden_dim, input_dim),
             nn.Sigmoid()
         )
 
     def encode(self, x):
-        h = self.encoder(x)
-        h = h.view(h.size(0), -1)  # Flatten the tensor
-        return self.fc_mean(h), self.fc_logvar(h)
+        x = self.encoder(x)
+        mean, logvar = self.mean_layer(x), self.logvar_layer(x)
+        return mean, logvar
 
-    def reparameterize(self, mean, logvar):
-        std = torch.exp(0.5 * logvar)
-        eps = torch.randn_like(std) # To parametrize epsilon as a Normal(0,1) distribution
-        return mean + eps * std
+    def reparameterization(self, mean, logvar):
+        epsilon = torch.randn_like(logvar).to(self.device)
+        z = mean + torch.exp(0.5 * logvar) * epsilon
+        return z
 
     def decode(self, z):
-        h = self.fc_decode(z)
-        h = h.view(h.size(0), 128, 42, 1631)  # Reshape to match the decoder's input
-        return self.decoder(h)
+        return self.decoder(z)
 
     def forward(self, x):
         mean, logvar = self.encode(x)
-        z = self.reparameterize(mean, logvar)
-        return self.decode(z), mean, logvar
+        z = self.reparameterization(mean, logvar)
+        x_hat = self.decode(z)
+        return x_hat, mean, logvar
 
-def vae_loss_function(recon_x, x, mean, logvar):
-    BCE = F.binary_cross_entropy(recon_x, x, reduction='sum')
+def vae_loss_function(x, x_hat, mean, logvar):
+    reproduction_loss = F.binary_cross_entropy(x_hat, x, reduction='sum')
     KLD = -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp())
-    return BCE + KLD
+    return reproduction_loss + KLD
 
-def train_vae(model, data_loader, optimizer, num_epochs=10):
+def train_vae(model, data_loader, optimizer, epochs, device='cpu'):
+    model.to(device)
     model.train()
-    epoch_losses = []  # To store epoch-level losses for plotting
+    for epoch in range(epochs):
+        overall_loss = 0
+        for batch_idx, batch in enumerate(data_loader):
+            x = batch['input'].view(batch['input'].size(0), -1).to(device)  # Flatten input
 
-    for epoch in range(num_epochs):
-        total_loss = 0
-        with tqdm(data_loader, desc=f"Epoch {epoch + 1}/{num_epochs}") as progress_bar:
-            for batch in progress_bar:
-                inputs = batch['input']  # Assuming data loader provides a dictionary with 'input' and 'output'
-                optimizer.zero_grad()
-                recon_batch, mean, logvar = model(inputs)
-                loss = vae_loss_function(recon_batch, inputs, mean, logvar)
-                loss.backward()
-                total_loss += loss.item()
-                optimizer.step()
+            # Debugging: Print input shape
+            print(f"Batch {batch_idx + 1}: Input shape: {x.shape}")
 
-                # Update progress bar with current loss
-                progress_bar.set_postfix(loss=loss.item())
+            optimizer.zero_grad()
 
-        epoch_loss = total_loss / len(data_loader.dataset)
-        epoch_losses.append(epoch_loss)
-        print(f"Epoch {epoch + 1}, Loss: {epoch_loss}")
+            try:
+                x_hat, mean, logvar = model(x)
+            except RuntimeError as e:
+                print(f"Error during forward pass: {e}")
+                print(f"Model input shape: {x.shape}")
+                raise
 
-    # Plot the training loss
-    plt.figure(figsize=(10, 6))
-    plt.plot(range(1, num_epochs + 1), epoch_losses, marker='o', label='Training Loss')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.title('Training Loss Over Epochs')
-    plt.legend()
-    plt.grid(True)
-    plt.show()
+            loss = vae_loss_function(x, x_hat, mean, logvar)
+
+            overall_loss += loss.item()
+
+            loss.backward()
+            optimizer.step()
+
+        print(f"Epoch {epoch + 1}, Average Loss: {overall_loss / len(data_loader.dataset)}")
