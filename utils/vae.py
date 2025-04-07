@@ -41,11 +41,12 @@ class VAE(nn.Module):
             nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
             nn.ReLU()
         )
-        self.fc_mean = nn.Linear(128 * 41 * 41, latent_dim)
-        self.fc_logvar = nn.Linear(128 * 41 * 41, latent_dim)
+        self.flattened_size = 128 * 41 * 41  # Update this based on the encoder's output shape
+        self.fc_mean = nn.Linear(self.flattened_size, latent_dim)
+        self.fc_logvar = nn.Linear(self.flattened_size, latent_dim)
         
         # Decoder
-        self.fc_decode = nn.Linear(latent_dim, 128 * 41 * 41)
+        self.fc_decode = nn.Linear(latent_dim, self.flattened_size)
         self.decoder = nn.Sequential(
             nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU(),
@@ -57,7 +58,7 @@ class VAE(nn.Module):
 
     def encode(self, x):
         h = self.encoder(x)
-        h = h.view(h.size(0), -1)
+        h = h.view(h.size(0), -1)  # Flatten the tensor
         return self.fc_mean(h), self.fc_logvar(h)
 
     def reparameterize(self, mean, logvar):
@@ -67,7 +68,7 @@ class VAE(nn.Module):
 
     def decode(self, z):
         h = self.fc_decode(z)
-        h = h.view(h.size(0), 128, 41, 41)
+        h = h.view(h.size(0), 128, 41, 41)  # Reshape to match the decoder's input
         return self.decoder(h)
 
     def forward(self, x):
