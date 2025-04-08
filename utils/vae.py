@@ -53,8 +53,8 @@ class VAE(nn.Module):
             nn.Sigmoid()
         )
 
-    def encode(self, x):
-        print(x.shape)
+    def encode(self, x): 
+        # x: (batch_size, input_dim)
         h = self.encoder(x)
         mean, logvar = self.mean_layer(h), self.logvar_layer(h)
         return mean, logvar
@@ -92,7 +92,7 @@ def train_vae(model, data_loader, optimizer, epochs, device='cpu'):
             y = batch['output'].view(batch['output'].size(0), -1).to(device)  # Flatten output
 
             # Debugging: Print the reshaped input and output shapes
-            print(f"Epoch {epoch + 1}, Batch {batch_idx + 1}: Input shape: {x.shape}, Output shape: {y.shape}")
+            # print(f"Epoch {epoch + 1}, Batch {batch_idx + 1}: Input shape: {x.shape}, Output shape: {y.shape}")
 
             optimizer.zero_grad()
 
