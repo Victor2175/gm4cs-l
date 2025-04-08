@@ -24,13 +24,13 @@ class ClimateDataset(Dataset):
         return len(self.inputs)
 
     def __getitem__(self, idx):
-        input_data = self.inputs[idx].unsqueeze(0)  # Add channel dimension
-        output_data = self.outputs[idx].unsqueeze(0)  # Add channel dimension
+        input_data = self.inputs[idx]#.unsqueeze(0)  # Add channel dimension
+        output_data = self.outputs[idx]#.unsqueeze(0)  # Add channel dimension
         return {'input': input_data, 'output': output_data}
 
 class VAE(nn.Module):
     def __init__(self, input_dim, hidden_dim=400, latent_dim=200, device='cpu'):
-        super(VAE, self).__init__()
+        super().__init__()
         self.device = device
 
         # Encoder
@@ -42,13 +42,11 @@ class VAE(nn.Module):
         )
 
         # Latent mean and variance
-        self.mean_layer = nn.Linear(latent_dim, 2)
-        self.logvar_layer = nn.Linear(latent_dim, 2)
+        self.mean_layer = nn.Linear(latent_dim, latent_dim)
+        self.logvar_layer = nn.Linear(latent_dim, latent_dim)
 
         # Decoder
         self.decoder = nn.Sequential(
-            nn.Linear(2, latent_dim),
-            nn.LeakyReLU(0.2),
             nn.Linear(latent_dim, hidden_dim),
             nn.LeakyReLU(0.2),
             nn.Linear(hidden_dim, input_dim),
@@ -56,8 +54,9 @@ class VAE(nn.Module):
         )
 
     def encode(self, x):
-        x = self.encoder(x)
-        mean, logvar = self.mean_layer(x), self.logvar_layer(x)
+        print(x.shape)
+        h = self.encoder(x)
+        mean, logvar = self.mean_layer(h), self.logvar_layer(h)
         return mean, logvar
 
     def reparameterization(self, mean, logvar):
@@ -82,32 +81,30 @@ def vae_loss_function(x, x_hat, mean, logvar):
 def train_vae(model, data_loader, optimizer, epochs, device='cpu'):
     model.to(device)
     model.train()
-    for epoch in range(epochs):
+
+    # Print input and output dimensions at the start
+
+    for epoch in tqdm(range(epochs)):
         overall_loss = 0
         for batch_idx, batch in enumerate(data_loader):
-            batch_loss = 0
-            for sample_idx in range(batch['input'].size(0)):  # Process one sample at a time
-                x = batch['input'][sample_idx].squeeze(0).view(-1).to(device)  # Flatten input
+            # Flatten the input and output to match the model's expected input dimensions
+            x = batch['input'].view(batch['input'].size(0), -1).to(device)  # Flatten input
+            y = batch['output'].view(batch['output'].size(0), -1).to(device)  # Flatten output
 
-                # Debugging: Print input shape
-                print(f"Batch {batch_idx + 1}, Sample {sample_idx + 1}: Input shape: {x.shape}")
+            # Debugging: Print the reshaped input and output shapes
+            print(f"Epoch {epoch + 1}, Batch {batch_idx + 1}: Input shape: {x.shape}, Output shape: {y.shape}")
 
-                optimizer.zero_grad()
+            optimizer.zero_grad()
 
-                try:
-                    x_hat, mean, logvar = model(x)
-                except RuntimeError as e:
-                    print(f"Error during forward pass: {e}")
-                    print(f"Model input shape: {x.shape}")
-                    raise
+            # Forward pass: input -> model -> reconstructed output
+            y_hat, mean, logvar = model(x)
 
-                loss = vae_loss_function(x, x_hat, mean, logvar)
+            # Compute loss: compare reconstructed output (y_hat) with actual output (y)
+            loss = vae_loss_function(y, y_hat, mean, logvar)
+            overall_loss += loss.item()
 
-                batch_loss += loss.item()
-
-                loss.backward()
-                optimizer.step()
-
-            overall_loss += batch_loss
+            # Backward pass and optimization
+            loss.backward()
+            optimizer.step()
 
         print(f"Epoch {epoch + 1}, Average Loss: {overall_loss / len(data_loader.dataset)}")
