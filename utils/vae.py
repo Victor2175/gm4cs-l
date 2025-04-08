@@ -29,7 +29,7 @@ class ClimateDataset(Dataset):
         return {'input': input_data, 'output': output_data}
 
 class VAE(nn.Module):
-    def __init__(self, input_dim, hidden_dim=400, latent_dim=200, device='cpu'):
+    def __init__(self, input_dim, hidden_dim=400, latent_dim=200, device='cpu', mu_var_dim=2):
         super().__init__()
         self.device = device
 
@@ -42,12 +42,12 @@ class VAE(nn.Module):
         )
 
         # Latent mean and variance
-        self.mean_layer = nn.Linear(latent_dim, latent_dim)
-        self.logvar_layer = nn.Linear(latent_dim, latent_dim)
+        self.mean_layer = nn.Linear(latent_dim, mu_var_dim)
+        self.logvar_layer = nn.Linear(latent_dim, mu_var_dim)
 
         # Decoder
         self.decoder = nn.Sequential(
-            nn.Linear(latent_dim, hidden_dim),
+            nn.Linear(mu_var_dim, hidden_dim),
             nn.LeakyReLU(0.2),
             nn.Linear(hidden_dim, input_dim),
             nn.Sigmoid()
@@ -82,7 +82,10 @@ def train_vae(model, data_loader, optimizer, epochs, device='cpu'):
     model.to(device)
     model.train()
 
-    # Print input and output dimensions at the start
+    # # Print input and output dimensions at the start
+    # first_batch = next(iter(data_loader))
+    # print(f"Input dimensions: {first_batch['input'].shape}")
+    # print(f"Output dimensions: {first_batch['output'].shape}")
 
     for epoch in tqdm(range(epochs)):
         overall_loss = 0
@@ -91,16 +94,35 @@ def train_vae(model, data_loader, optimizer, epochs, device='cpu'):
             x = batch['input'].view(batch['input'].size(0), -1).to(device)  # Flatten input
             y = batch['output'].view(batch['output'].size(0), -1).to(device)  # Flatten output
 
-            # Debugging: Print the reshaped input and output shapes
-            # print(f"Epoch {epoch + 1}, Batch {batch_idx + 1}: Input shape: {x.shape}, Output shape: {y.shape}")
+            # Debugging: Check for NaN values in input and output
+            if torch.isnan(x).any():
+                print(f"NaN detected in input at Epoch {epoch + 1}, Batch {batch_idx + 1}")
+            if torch.isnan(y).any():
+                print(f"NaN detected in output at Epoch {epoch + 1}, Batch {batch_idx + 1}")
 
             optimizer.zero_grad()
 
             # Forward pass: input -> model -> reconstructed output
             y_hat, mean, logvar = model(x)
 
+            # Clamp the reconstructed output to avoid issues in BCE loss
+            y_hat = torch.clamp(y_hat, min=1e-7, max=1-1e-7)
+
+            # Debugging: Check for NaN values in model outputs
+            if torch.isnan(y_hat).any():
+                print(f"NaN detected in reconstructed output at Epoch {epoch + 1}, Batch {batch_idx + 1}")
+            if torch.isnan(mean).any():
+                print(f"NaN detected in mean at Epoch {epoch + 1}, Batch {batch_idx + 1}")
+            if torch.isnan(logvar).any():
+                print(f"NaN detected in logvar at Epoch {epoch + 1}, Batch {batch_idx + 1}")
+
             # Compute loss: compare reconstructed output (y_hat) with actual output (y)
             loss = vae_loss_function(y, y_hat, mean, logvar)
+
+            # Debugging: Check for NaN values in loss
+            if torch.isnan(loss).any():
+                print(f"NaN detected in loss at Epoch {epoch + 1}, Batch {batch_idx + 1}")
+
             overall_loss += loss.item()
 
             # Backward pass and optimization
