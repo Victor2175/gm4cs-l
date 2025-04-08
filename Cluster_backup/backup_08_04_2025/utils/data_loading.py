@@ -1,0 +1,38 @@
+import os
+import pickle as pkl
+import numpy as np
+from tqdm import tqdm
+
+def load_data(data_path, filename):
+    """
+    Load data from a pickle file.
+    Args:
+        data_path (_type_): _description_
+        filename (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
+    print(f"Loading data from {filename}")
+    with open(os.path.join(data_path, filename), 'rb') as f:
+        data = pkl.load(f)
+    print("Data loaded successfully.")
+    return data
+
+def filter_data(data, min_runs=4):
+    """
+    Filter data to keep only models with at least min_runs runs.
+    Args:
+        data (dict): Dictionary containing the data.
+        min_runs (int): Minimum number of runs to keep a model.
+    
+    Returns:
+        dict: Filtered data.
+    """
+    print("Filtering data...")
+    filtered_data = {
+        model: {run: np.flip(data[model][run], axis=1) for run in data[model]}
+        for model in tqdm(data.keys()) if len(data[model]) >= min_runs
+    }
+    print(f"Data filtered. Kept {len(filtered_data)} models")
+    return filtered_data
