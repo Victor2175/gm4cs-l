@@ -61,16 +61,16 @@ class VAE(nn.Module):
 
     def encode(self, x):
         # Check and print input range
-        print(f"Encoder input range: min={x.min().item():.4f}, max={x.max().item():.4f}, mean={x.mean().item():.4f}")
+        # print(f"Encoder input range: min={x.min().item():.4f}, max={x.max().item():.4f}, mean={x.mean().item():.4f}")
         
         # Regular encoder forward pass
         h = self.encoder(x)
         
         # Check encoder output before calculating mean and logvar
-        if torch.isnan(h).any():
-            print("NaN detected in encoder output")
-        else:
-            print(f"Encoder output range: min={h.min().item():.4f}, max={h.max().item():.4f}, mean={h.mean().item():.4f}")
+        # if torch.isnan(h).any():
+        #     print("NaN detected in encoder output")
+        # else:
+        #     print(f"Encoder output range: min={h.min().item():.4f}, max={h.max().item():.4f}, mean={h.mean().item():.4f}")
         
         mean = self.mean_layer(h)
         logvar = self.logvar_layer(h)
@@ -110,8 +110,10 @@ def initialize_weights(m):
             nn.init.zeros_(m.bias)
 
 def vae_loss_function(x, x_hat, mean, logvar, beta=0.01):
-    # Reconstruction loss (binary cross-entropy)
-    reproduction_loss = F.binary_cross_entropy(x_hat, x, reduction='sum')
+    # # Reconstruction loss (binary cross-entropy)
+    # reproduction_loss = F.binary_cross_entropy(x_hat, x, reduction='sum')
+    # Switched to binary cross-entropy with logits for better numerical stability
+    reproduction_loss = F.binary_cross_entropy_with_logits(x_hat, x, reduction='sum')
     
     # KL Divergence with a beta factor to control its influence 
     # Using a smaller beta value to reduce the influence of KL divergence
