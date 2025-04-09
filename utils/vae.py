@@ -29,15 +29,17 @@ class ClimateDataset(Dataset):
         return {'input': input_data, 'output': output_data}
 
 class VAE(nn.Module):
-    def __init__(self, input_dim, hidden_dim=400, latent_dim=200, device='cpu', mu_var_dim=2):
+    def __init__(self, input_dim, hidden_dim=25, latent_dim=50, device='cpu', mu_var_dim=5):
         super().__init__()
         self.device = device
 
-        # Encoder
+        # Encoder with batch normalization
         self.encoder = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim),  # Added batch norm
             nn.LeakyReLU(0.2),
             nn.Linear(hidden_dim, latent_dim),
+            nn.BatchNorm1d(latent_dim),  # Added batch norm
             nn.LeakyReLU(0.2)
         )
 
@@ -45,24 +47,52 @@ class VAE(nn.Module):
         self.mean_layer = nn.Linear(latent_dim, mu_var_dim)
         self.logvar_layer = nn.Linear(latent_dim, mu_var_dim)
 
-        # Decoder
+        # Decoder with batch normalization
         self.decoder = nn.Sequential(
-            nn.Linear(mu_var_dim, hidden_dim),
+            nn.Linear(mu_var_dim, latent_dim),
+            nn.BatchNorm1d(latent_dim),  # Added batch norm
+            nn.LeakyReLU(0.2),
+            nn.Linear(latent_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim),  # Added batch norm
             nn.LeakyReLU(0.2),
             nn.Linear(hidden_dim, input_dim),
-            nn.Sigmoid()
+            nn.Tanh()  # Changed to Tanh to handle negative values
         )
 
-    def encode(self, x): 
-        # x: (batch_size, input_dim)
+    def encode(self, x):
+        # Check and print input range
+        print(f"Encoder input range: min={x.min().item():.4f}, max={x.max().item():.4f}, mean={x.mean().item():.4f}")
+        
+        # Regular encoder forward pass
         h = self.encoder(x)
-        mean, logvar = self.mean_layer(h), self.logvar_layer(h)
+        
+        # Check encoder output before calculating mean and logvar
+        if torch.isnan(h).any():
+            print("NaN detected in encoder output")
+        else:
+            print(f"Encoder output range: min={h.min().item():.4f}, max={h.max().item():.4f}, mean={h.mean().item():.4f}")
+        
+        mean = self.mean_layer(h)
+        logvar = self.logvar_layer(h)
+        
+        # Check mean and logvar for NaNs
+        if torch.isnan(mean).any():
+            print("NaN detected in mean calculation")
+        if torch.isnan(logvar).any():
+            print("NaN detected in logvar calculation")
+        
         return mean, logvar
 
     def reparameterization(self, mean, var):
         epsilon = torch.randn_like(var).to(self.device)      
         z = mean + var*epsilon
         return z
+    # def reparameterization(self, mean, logvar):
+    #     # FIXED: Now correctly using exp(0.5 * logvar) instead of logvar directly
+    #     std = torch.exp(0.5 * logvar)
+    #     epsilon = torch.randn_like(std).to(self.device)      
+    #     z = mean + std * epsilon
+    #     return z
 
     def decode(self, z):
         return self.decoder(z)
@@ -79,19 +109,24 @@ def initialize_weights(m):
         if m.bias is not None:
             nn.init.zeros_(m.bias)
 
-def vae_loss_function(x, x_hat, mean, logvar):
+def vae_loss_function(x, x_hat, mean, logvar, beta=0.01):
+    # Reconstruction loss (binary cross-entropy)
     reproduction_loss = F.binary_cross_entropy(x_hat, x, reduction='sum')
+    
+    # KL Divergence with a beta factor to control its influence 
+    # Using a smaller beta value to reduce the influence of KL divergence
     KLD = -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp())
-    return reproduction_loss + KLD
+    
+    return reproduction_loss + beta * KLD
 
 def train_vae(model, data_loader, optimizer, epochs, device='cpu'):
     model.to(device)
     model.train()
 
     # Print input and output dimensions at the start
-    first_batch = next(iter(data_loader))
-    print(f"Input dimensions: {first_batch['input'].shape}")
-    print(f"Output dimensions: {first_batch['output'].shape}")
+    # first_batch = next(iter(data_loader))
+    # print(f"Input dimensions: {first_batch['input'].shape}")
+    # print(f"Output dimensions: {first_batch['output'].shape}")
 
     for epoch in tqdm(range(epochs)):
         overall_loss = 0
@@ -101,10 +136,10 @@ def train_vae(model, data_loader, optimizer, epochs, device='cpu'):
             y = batch['output'].view(batch['output'].size(0), -1).to(device)  # Flatten output
 
             # Debugging: Check for NaN or extreme values in input and output
-            if torch.isnan(x).any() or torch.isinf(x).any():
-                print(f"NaN or Inf detected in input at Epoch {epoch + 1}, Batch {batch_idx + 1}")
-            if torch.isnan(y).any() or torch.isinf(y).any():
-                print(f"NaN or Inf detected in output at Epoch {epoch + 1}, Batch {batch_idx + 1}")
+            # if torch.isnan(x).any() or torch.isinf(x).any():
+            #     print(f"NaN or Inf detected in input at Epoch {epoch + 1}, Batch {batch_idx + 1}")
+            # if torch.isnan(y).any() or torch.isinf(y).any():
+            #     print(f"NaN or Inf detected in output at Epoch {epoch + 1}, Batch {batch_idx + 1}")
 
             optimizer.zero_grad()
 
@@ -115,19 +150,19 @@ def train_vae(model, data_loader, optimizer, epochs, device='cpu'):
             # y_hat = torch.clamp(y_hat, min=1e-7, max=1-1e-7)
 
             # Debugging: Check for NaN values in model outputs
-            if torch.isnan(y_hat).any():
-                print(f"NaN detected in reconstructed output at Epoch {epoch + 1}, Batch {batch_idx + 1}")
-            if torch.isnan(mean).any():
-                print(f"NaN detected in mean at Epoch {epoch + 1}, Batch {batch_idx + 1}")
-            if torch.isnan(logvar).any():
-                print(f"NaN detected in logvar at Epoch {epoch + 1}, Batch {batch_idx + 1}")
+            # if torch.isnan(y_hat).any():
+            #     print(f"NaN detected in reconstructed output at Epoch {epoch + 1}, Batch {batch_idx + 1}")
+            # if torch.isnan(mean).any():
+            #     print(f"NaN detected in mean at Epoch {epoch + 1}, Batch {batch_idx + 1}")
+            # if torch.isnan(logvar).any():
+            #     print(f"NaN detected in logvar at Epoch {epoch + 1}, Batch {batch_idx + 1}")
 
             # Compute loss: compare reconstructed output (y_hat) with actual output (y)
             loss = vae_loss_function(y, y_hat, mean, logvar)
 
             # Debugging: Check for NaN values in loss
-            if torch.isnan(loss).any():
-                print(f"NaN detected in loss at Epoch {epoch + 1}, Batch {batch_idx + 1}")
+            # if torch.isnan(loss).any():
+            #     print(f"NaN detected in loss at Epoch {epoch + 1}, Batch {batch_idx + 1}")
 
             overall_loss += loss.item()
 
@@ -135,7 +170,7 @@ def train_vae(model, data_loader, optimizer, epochs, device='cpu'):
             loss.backward()
 
             # Gradient clipping to prevent exploding gradients
-            # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 
             optimizer.step()
 
