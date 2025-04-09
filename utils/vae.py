@@ -112,7 +112,7 @@ def initialize_weights(m):
 def vae_loss_function(x, x_hat, mean, logvar, beta=0.01):
     # # Reconstruction loss (binary cross-entropy)
     # reproduction_loss = F.binary_cross_entropy(x_hat, x, reduction='sum')
-    # Switched to binary cross-entropy with logits for better numerical stability
+    # # Switched to binary cross-entropy with logits for better numerical stability
     reproduction_loss = F.binary_cross_entropy_with_logits(x_hat, x, reduction='sum')
     
     # KL Divergence with a beta factor to control its influence 
@@ -124,11 +124,9 @@ def vae_loss_function(x, x_hat, mean, logvar, beta=0.01):
 def train_vae(model, data_loader, optimizer, epochs, device='cpu'):
     model.to(device)
     model.train()
-
-    # Print input and output dimensions at the start
-    # first_batch = next(iter(data_loader))
-    # print(f"Input dimensions: {first_batch['input'].shape}")
-    # print(f"Output dimensions: {first_batch['output'].shape}")
+    
+    # Track losses for plotting
+    losses = []
 
     for epoch in tqdm(range(epochs)):
         overall_loss = 0
@@ -137,34 +135,17 @@ def train_vae(model, data_loader, optimizer, epochs, device='cpu'):
             x = batch['input'].view(batch['input'].size(0), -1).to(device)  # Flatten input
             y = batch['output'].view(batch['output'].size(0), -1).to(device)  # Flatten output
 
-            # Debugging: Check for NaN or extreme values in input and output
-            # if torch.isnan(x).any() or torch.isinf(x).any():
-            #     print(f"NaN or Inf detected in input at Epoch {epoch + 1}, Batch {batch_idx + 1}")
-            # if torch.isnan(y).any() or torch.isinf(y).any():
-            #     print(f"NaN or Inf detected in output at Epoch {epoch + 1}, Batch {batch_idx + 1}")
-
+            # Check and print input range occasionally
+            # if batch_idx % 10 == 0:
+            #     print(f"Input range: min={x.min().item():.4f}, max={x.max().item():.4f}, mean={x.mean().item():.4f}")
+            
             optimizer.zero_grad()
 
             # Forward pass: input -> model -> reconstructed output
             y_hat, mean, logvar = model(x)
 
-            # Clamp the reconstructed output to avoid issues in BCE loss
-            # y_hat = torch.clamp(y_hat, min=1e-7, max=1-1e-7)
-
-            # Debugging: Check for NaN values in model outputs
-            # if torch.isnan(y_hat).any():
-            #     print(f"NaN detected in reconstructed output at Epoch {epoch + 1}, Batch {batch_idx + 1}")
-            # if torch.isnan(mean).any():
-            #     print(f"NaN detected in mean at Epoch {epoch + 1}, Batch {batch_idx + 1}")
-            # if torch.isnan(logvar).any():
-            #     print(f"NaN detected in logvar at Epoch {epoch + 1}, Batch {batch_idx + 1}")
-
             # Compute loss: compare reconstructed output (y_hat) with actual output (y)
             loss = vae_loss_function(y, y_hat, mean, logvar)
-
-            # Debugging: Check for NaN values in loss
-            # if torch.isnan(loss).any():
-            #     print(f"NaN detected in loss at Epoch {epoch + 1}, Batch {batch_idx + 1}")
 
             overall_loss += loss.item()
 
@@ -176,4 +157,10 @@ def train_vae(model, data_loader, optimizer, epochs, device='cpu'):
 
             optimizer.step()
 
-        print(f"Epoch {epoch + 1}, Average Loss: {overall_loss / len(data_loader.dataset)}")
+        # Calculate average loss for this epoch
+        avg_loss = overall_loss / len(data_loader.dataset)
+        losses.append(avg_loss)
+        if epoch % 100 == 0:
+            print(f"Epoch {epoch + 1}, Average Loss: {avg_loss:.4f}")
+
+    return losses
