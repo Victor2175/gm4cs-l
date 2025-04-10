@@ -29,7 +29,7 @@ class ClimateDataset(Dataset):
         return {'input': input_data, 'output': output_data}
 
 class VAE(nn.Module):
-    def __init__(self, input_dim, hidden_dim=25, latent_dim=50, device='cpu', mu_var_dim=5):
+    def __init__(self, input_dim, hidden_dim=25, latent_dim=50, device='cpu', z_dim=5):
         super().__init__()
         self.device = device
 
@@ -44,12 +44,12 @@ class VAE(nn.Module):
         )
 
         # Latent mean and variance
-        self.mean_layer = nn.Linear(latent_dim, mu_var_dim)
-        self.logvar_layer = nn.Linear(latent_dim, mu_var_dim)
+        self.mean_layer = nn.Linear(latent_dim, z_dim)
+        self.var_layer = nn.Linear(latent_dim, z_dim)
 
         # Decoder with batch normalization
         self.decoder = nn.Sequential(
-            nn.Linear(mu_var_dim, latent_dim),
+            nn.Linear(z_dim, latent_dim),
             nn.BatchNorm1d(latent_dim),  # Added batch norm
             nn.LeakyReLU(0.2),
             nn.Linear(latent_dim, hidden_dim),
@@ -73,15 +73,15 @@ class VAE(nn.Module):
         #     print(f"Encoder output range: min={h.min().item():.4f}, max={h.max().item():.4f}, mean={h.mean().item():.4f}")
         
         mean = self.mean_layer(h)
-        logvar = self.logvar_layer(h)
+        var = self.var_layer(h)
         
         # Check mean and logvar for NaNs
         if torch.isnan(mean).any():
             print("NaN detected in mean calculation")
-        if torch.isnan(logvar).any():
-            print("NaN detected in logvar calculation")
+        if torch.isnan(var).any():
+            print("NaN detected in var calculation")
         
-        return mean, logvar
+        return mean, var
 
     def reparameterization(self, mean, var):
         epsilon = torch.randn_like(var).to(self.device)      
@@ -103,21 +103,21 @@ class VAE(nn.Module):
         x_hat = self.decode(z)
         return x_hat, mean, logvar
 
-def initialize_weights(m):
-    if isinstance(m, nn.Linear):
-        nn.init.xavier_uniform_(m.weight)
-        if m.bias is not None:
-            nn.init.zeros_(m.bias)
+# def initialize_weights(m):
+#     if isinstance(m, nn.Linear):
+#         nn.init.xavier_uniform_(m.weight)
+#         if m.bias is not None:
+#             nn.init.zeros_(m.bias)
 
-def vae_loss_function(x, x_hat, mean, logvar, beta=0.01):
+def vae_loss_function(x, x_hat, mean, var, beta=0.01):
     # # Reconstruction loss (binary cross-entropy)
-    # reproduction_loss = F.binary_cross_entropy(x_hat, x, reduction='sum')
+    reproduction_loss = F.binary_cross_entropy(x_hat, x, reduction='sum')
     # # Switched to binary cross-entropy with logits for better numerical stability
-    reproduction_loss = F.binary_cross_entropy_with_logits(x_hat, x, reduction='sum')
+    # reproduction_loss = F.binary_cross_entropy_with_logits(x_hat, x, reduction='sum')
     
     # KL Divergence with a beta factor to control its influence 
     # Using a smaller beta value to reduce the influence of KL divergence
-    KLD = -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp())
+    KLD = -0.5 * torch.sum(1 + torch.log(var.pow(2)) - mean.pow(2) - var.exp())
     
     return reproduction_loss + beta * KLD
 
@@ -138,19 +138,19 @@ def train_vae(model, data_loader, optimizer, epochs, device='cpu'):
             # Check and print input range occasionally
             # if batch_idx % 10 == 0:
             #     print(f"Input range: min={x.min().item():.4f}, max={x.max().item():.4f}, mean={x.mean().item():.4f}")
-            
-            optimizer.zero_grad()
 
             # Forward pass: input -> model -> reconstructed output
-            y_hat, mean, logvar = model(x)
+            y_hat, mean, var = model(x)
 
             # Compute loss: compare reconstructed output (y_hat) with actual output (y)
-            loss = vae_loss_function(y, y_hat, mean, logvar)
-
-            overall_loss += loss.item()
-
+            loss = vae_loss_function(y, y_hat, mean, var)
+            
+            optimizer.zero_grad()
+            
             # Backward pass and optimization
             loss.backward()
+
+            overall_loss += loss.item()
 
             # Gradient clipping to prevent exploding gradients
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -160,7 +160,7 @@ def train_vae(model, data_loader, optimizer, epochs, device='cpu'):
         # Calculate average loss for this epoch
         avg_loss = overall_loss / len(data_loader.dataset)
         losses.append(avg_loss)
-        if epoch % 100 == 0:
+        if epoch % 10 == 0:
             print(f"Epoch {epoch + 1}, Average Loss: {avg_loss:.4f}")
 
     return losses
