@@ -130,7 +130,7 @@ def train_vae(model, data_loader, optimizer, epochs, device='cpu'):
 
     for epoch in tqdm(range(epochs)):
         overall_loss = 0
-        for batch_idx, batch in enumerate(data_loader):
+        for _, batch in enumerate(data_loader):
             # Flatten the input and output to match the model's expected input dimensions
             x = batch['input'].view(batch['input'].size(0), -1).to(device)  # Flatten input
             y = batch['output'].view(batch['output'].size(0), -1).to(device)  # Flatten output
