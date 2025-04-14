@@ -29,7 +29,7 @@ class ClimateDataset(Dataset):
         return {'input': input_data, 'output': output_data}
 
 class VAE(nn.Module):
-    def __init__(self, input_dim, hidden_dim=25, latent_dim=50, device='cpu', z_dim=5):
+    def __init__(self, input_dim, hidden_dim=50, latent_dim=64, device='cpu', z_dim=5):
         super().__init__()
         self.device = device
 
@@ -56,7 +56,7 @@ class VAE(nn.Module):
             nn.BatchNorm1d(hidden_dim),  # Added batch norm
             nn.LeakyReLU(0.2),
             nn.Linear(hidden_dim, input_dim),
-            nn.Tanh()  # Changed to Tanh to handle negative values
+            # nn.Tanh()  # Changed to Tanh to handle negative values
         )
 
     def encode(self, x):
@@ -109,9 +109,10 @@ class VAE(nn.Module):
 #         if m.bias is not None:
 #             nn.init.zeros_(m.bias)
 
-def vae_loss_function(x, x_hat, mean, var, beta=0.01):
+def vae_loss_function(x, x_hat, mean, var, beta=1):
     # # Reconstruction loss (binary cross-entropy)
-    reproduction_loss = F.binary_cross_entropy(x_hat, x, reduction='sum')
+    # reproduction_loss = F.binary_cross_entropy(x_hat, x, reduction='sum')
+    reproduction_loss = F.mse_loss(x_hat, x, reduction='sum')
     # # Switched to binary cross-entropy with logits for better numerical stability
     # reproduction_loss = F.binary_cross_entropy_with_logits(x_hat, x, reduction='sum')
     
