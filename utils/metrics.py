@@ -4,33 +4,47 @@ from numpy.linalg import matrix_rank
 from tqdm import tqdm
 import numpy as np
 
-def calculate_mse(run_data, B_rrr, ground_truth):
+def calculate_mse(run_data, B_rrr, ground_truth, testing_statistics=None, model=None):
     """
     Calculate the Mean Squared Error (MSE) for a single run of the test data.
     Args:
         run_data (np.array): array of shape (T, d).
         B_rrr (np.array): Reduced-rank weight matrix.
         ground_truth (np.array): Ground truth data of shape (T, d).
+        testing_statistics (dict, optional): Dictionary containing model-specific statistics with 'std' for each test model.
+        model (str, optional): The name of the model being evaluated, used to select the appropriate std from testing_statistics.
         
     Returns:
-        float: Mean Squared Error.
+        float: Mean Squared Error (normalized if testing_statistics and model are provided).
     """
     # Compute the predicted response
     y_pred = run_data @ B_rrr
     
-    # Calculate the Mean Squared Error
-    mse = mean_squared_error(ground_truth, y_pred)
+    if testing_statistics and model and model in testing_statistics and 'std' in testing_statistics[model]:
+        # Calculate the normalized Mean Squared Error using the model-specific standard deviation
+        normalized_diff = (y_pred - ground_truth) / testing_statistics[model]['std']
+        mse = np.mean(normalized_diff ** 2)
+        print(f"The std for {model} is {testing_statistics[model]['std']}")
+        print(f"Mean Squared Error for {model}: {mse}")
+        print("NORMALISED MSE")
+    else:
+        # Calculate the standard Mean Squared Error
+        mse = mean_squared_error(ground_truth, y_pred)
+        print("Normal MSE")
     
     return mse
 
-def calculate_mse_distribution(normalized_train_data, Brr):
-    """_summary_
+def calculate_mse_distribution(normalized_train_data, Brr, testing_statistics=None):
+    """
+    Calculate the MSE distribution for each model in the training data.
 
     Args:
-        normalized_train_data (_type_): _description_
-        Brr (_type_): _description_
+        normalized_train_data (dict): Normalized training data.
+        Brr (np.array): Reduced-rank weight matrix.
+        testing_statistics (dict, optional): Dictionary containing 'std' for the test set.
+        
     Returns:
-        _type_: _description_
+        dict: MSE values for each model.
     """
     mse_values_train = {}
     
@@ -44,7 +58,7 @@ def calculate_mse_distribution(normalized_train_data, Brr):
             test_run = normalized_train_data[model][run]
             
             # Calculate the MSE
-            run_mse = calculate_mse(test_run, Brr, ground_truth)
+            run_mse = calculate_mse(test_run, Brr, ground_truth, testing_statistics, model)
             
             mse_values_train[model].append(run_mse)
     

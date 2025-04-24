@@ -9,7 +9,8 @@ from data_processing import normalize_data, pool_data
 from regression import reduced_rank_regression
 import numpy as np
 import seaborn as sns
-import os
+import os, psutil, gc
+import pickle  # Added import for pickle
 
 def preprocess_data(data_path, filename, min_runs=4):
     """
@@ -47,63 +48,75 @@ def preprocess_data(data_path, filename, min_runs=4):
     
     return data_without_nans, nan_mask
 
-def loo_cross_validation(data, lambdas, ranks, center=True):
-    """
-    Perform leave-one-out cross-validation to get a distribution of the MSE for different values of lambda.
-    
-    Args:
-        data (dict): Preprocessed data without NaNs.
-        lambdas (list): List of lambda values to test.
-        ranks (list): List of rank values to test.
-        
-    Returns:
-        dict: Dictionary containing the MSE distribution for each lambda.
-    """
+def log_memory_usage(message=""):
+    process = psutil.Process(os.getpid())
+    mem_info = process.memory_info()
+    print(f"{message} - Memory usage: {mem_info.rss / 1024 ** 2:.2f} MB (RSS)", flush=True)
+
+def loo_cross_validation(data, lambdas, ranks, center=True, use_ols_only=False, output_dir=None):
     models = list(data.keys())
-    # Initialize the MSE distribution dictionary
     mse_distribution = {model: {rank: {lambda_: [] for lambda_ in lambdas} for rank in ranks} for model in models}
     mse_by_combination = {(rank, lambda_): [] for rank in ranks for lambda_ in lambdas}
+
     for test_model in tqdm(models):
-        # Split the data into training and testing sets according to the leave-one-out scheme
+        log_memory_usage(f"Before processing model {test_model}")
+        # Split the data into training and testing sets
         train_models = [model for model in models if model != test_model]
         train_data = {model: data[model] for model in train_models}
         test_data = {test_model: data[test_model]}
-        
-        # Assertions to ensure data integrity
-        assert test_model not in train_models, f"Test model {test_model} found in training models."
-        assert all(model not in test_data for model in train_models), f"Training models {train_models} found in test data."
-        assert test_model in test_data, f"Test model {test_model} not found in test data."
-        assert len(train_data) > 0, f"Training data for model {test_model} is empty."
-        assert len(test_data) > 0, f"Test data for model {test_model} is empty."
-        
+
         # Normalize the data
-        normalized_train_data, normalized_test_data, _, _ = normalize_data(train_data, test_data, center=center)
-        
+        normalized_train_data, normalized_test_data, _, testing_statistics = normalize_data(train_data, test_data, center=center)
+        log_memory_usage(f"After normalization for model {test_model}")
+
         # Pool the training data
         X_train, Y_train = pool_data(normalized_train_data)
-        
-        print("Performing leave-one-out cross-validation for model:", test_model)
-        
-        # Get the test runs and ground truth
-        test_runs = [run for run in normalized_test_data[test_model].keys() if run != 'forced_response']
-        ground_truth = normalized_test_data[test_model]['forced_response']
-        
+        log_memory_usage(f"After pooling data for model {test_model}")
+
         for rank in ranks:
             for lambda_ in lambdas:
                 # Perform reduced rank regression
-                B_rrr, B_ols = reduced_rank_regression(X_train, Y_train, rank, lambda_)
-                
-                # Perform Sanity check
-                _ = sanity_check(B_rrr, B_ols, rank, True)
-                
+                B_rrr, B_ols = reduced_rank_regression(X_train, Y_train, rank, lambda_, use_ols_only=use_ols_only)
+                log_memory_usage(f"After regression for rank {rank}, lambda {lambda_}")
+
                 # Calculate the MSE for each test run
+                test_runs = [run for run in normalized_test_data[test_model].keys() if run != 'forced_response']
+                ground_truth = normalized_test_data[test_model]['forced_response']
                 for run in test_runs:
                     test_run_data = normalized_test_data[test_model][run]
-                    mse = calculate_mse(test_run_data, B_rrr, ground_truth)
-                    
-                    # Store the MSE values in both dictionaries
+                    mse = calculate_mse(test_run_data, B_rrr, ground_truth, testing_statistics, test_model)
                     mse_distribution[test_model][rank][lambda_].append(mse)
                     mse_by_combination[(rank, lambda_)].append(mse)
+                # Clear memory for the current test model
+                del B_rrr, B_ols
+                gc.collect()
+            
+        # Explicitly delete large variables and force garbage collection after processing each model
+        del normalized_train_data, normalized_test_data, X_train, Y_train, train_data, test_data
+        gc.collect()
+
+        log_memory_usage(f"After processing model {test_model}")
+    gc.collect()
+    
+    # Save the metrics as pickle files if output_dir is provided
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Determine method name based on use_ols_only flag
+        method_name = "OLS_results" if use_ols_only else "RRR_results"
+        
+        # Save mse_distribution
+        mse_distribution_path = os.path.join(output_dir, f"{method_name}_mse_distribution.pkl")
+        with open(mse_distribution_path, 'wb') as f:
+            pickle.dump(mse_distribution, f)
+        print(f"Saved MSE distribution at {mse_distribution_path}", flush=True)
+        
+        # Save mse_by_combination
+        mse_by_combination_path = os.path.join(output_dir, f"{method_name}_mse_by_combination.pkl")
+        with open(mse_by_combination_path, 'wb') as f:
+            pickle.dump(mse_by_combination, f)
+        print(f"Saved MSE by combination at {mse_by_combination_path}", flush=True)
+    
     return mse_distribution, mse_by_combination
 
 def plot_mse_distributions(mse_by_combination, ranks, lambdas, output_dir=None):
@@ -172,7 +185,7 @@ def select_robust_hyperparameters(mse_by_combination, mean_weight, variance_weig
         score = mean_weight * mean_mse + variance_weight * variance_mse
 
         if verbose:
-            print(f"Rank: {rank}, Lambda: {lambda_}, Mean MSE: {mean_mse:.4f}, Variance: {variance_mse:.4f}, Score: {score:.4f}")
+            print(f"Rank: {rank}, Lambda: {lambda_}, Mean MSE: {mean_mse:.4f}, Variance: {variance_mse:.4f}, Score: {score:.4f}", flush = True)
     
         # Select the combination with the lowest score
         if score < best_score:
@@ -189,7 +202,7 @@ def select_robust_hyperparameters(mse_by_combination, mean_weight, variance_weig
         f.write(f"Best Rank: {best_rank_lambda[0]}\n")
         f.write(f"Best Lambda: {best_rank_lambda[1]}\n")
         f.write(f"Weighted Score: {best_score:.4f}\n")
-    print(f"Saved best hyperparameters at {best_hyperparams_path}")
+    print(f"Saved best hyperparameters at {best_hyperparams_path}", flush = True)
 
     return best_rank_lambda, best_score
 
@@ -224,11 +237,11 @@ def plot_mse_distributions_per_model(mse_distributions, models, output_dir):
         plot_path = os.path.join(output_dir, f"mse_distribution_{model}.png")
         plt.savefig(plot_path)
         plt.close()  # Close the plot to free memory
-        print(f"Saved MSE distribution plot for model {model} at {plot_path}")
+        print(f"Saved MSE distribution plot for model {model} at {plot_path}", flush = True)
     return None
 
 
-def final_cross_validation(data, best_rank, best_lambda):
+def final_cross_validation(data, best_rank, best_lambda, use_ols_only=False, output_dir=None):
     """
     Perform a final round of cross-validation using the best rank and lambda.
     
@@ -236,47 +249,8 @@ def final_cross_validation(data, best_rank, best_lambda):
         data (dict): Preprocessed data without NaNs.
         best_rank (int): The best rank value.
         best_lambda (float): The best lambda value.
-        
-    Returns:
-        list: List of MSE losses for each test model.
-    """
-    models = list(data.keys())
-    mse_losses = []
-    
-    for test_model in tqdm(models, desc="Final Cross-Validation"):
-        # Split the data into training and testing sets
-        train_models = [model for model in models if model != test_model]
-        train_data = {model: data[model] for model in train_models}
-        test_data = {test_model: data[test_model]}
-        
-        # Normalize the data
-        normalized_train_data, normalized_test_data, _, _ = normalize_data(train_data, test_data)
-        
-        # Pool the training data
-        X_train, Y_train = pool_data(normalized_train_data)
-        
-        # Perform reduced rank regression
-        B_rrr, _ = reduced_rank_regression(X_train, Y_train, rank=best_rank, lambda_=best_lambda)
-        
-        # Evaluate on the test model
-        test_runs = [run for run in normalized_test_data[test_model].keys() if run != 'forced_response']
-        ground_truth = normalized_test_data[test_model]['forced_response']
-        
-        for run in test_runs:
-            test_run_data = normalized_test_data[test_model][run]
-            mse = calculate_mse(test_run_data, B_rrr, ground_truth)
-            mse_losses.append(mse)
-    
-    return mse_losses
-
-def final_cross_validation(data, best_rank, best_lambda):
-    """
-    Perform a final round of cross-validation using the best rank and lambda.
-    
-    Args:
-        data (dict): Preprocessed data without NaNs.
-        best_rank (int): The best rank value.
-        best_lambda (float): The best lambda value.
+        use_ols_only (bool): Whether to use only OLS (no dimensionality reduction).
+        output_dir (str): Directory to save the output files. If None, no files are saved.
         
     Returns:
         dict: Dictionary containing MSE losses for each test model.
@@ -285,31 +259,52 @@ def final_cross_validation(data, best_rank, best_lambda):
     mse_losses = {model: [] for model in models}
     
     for test_model in tqdm(models, desc="Final Cross-Validation"):
+        log_memory_usage(f"Before processing model {test_model}")
         # Split the data into training and testing sets
         train_models = [model for model in models if model != test_model]
         train_data = {model: data[model] for model in train_models}
         test_data = {test_model: data[test_model]}
-        
+
         # Normalize the data
-        normalized_train_data, normalized_test_data, _, _ = normalize_data(train_data, test_data)
-        
+        normalized_train_data, normalized_test_data, _, testing_statistics = normalize_data(train_data, test_data)
+        log_memory_usage(f"After normalization for model {test_model}")
+
         # Pool the training data
         X_train, Y_train = pool_data(normalized_train_data)
-        
+        log_memory_usage(f"After pooling data for model {test_model}")
+
         # Perform reduced rank regression
-        B_rrr, _ = reduced_rank_regression(X_train, Y_train, rank=best_rank, lambda_=best_lambda)
-        
+        B_rrr, _ = reduced_rank_regression(X_train, Y_train, rank=best_rank, lambda_=best_lambda, use_ols_only=use_ols_only)
+        log_memory_usage(f"After regression for model {test_model}")
+
         # Evaluate on the test model
         test_runs = [run for run in normalized_test_data[test_model].keys() if run != 'forced_response']
         ground_truth = normalized_test_data[test_model]['forced_response']
         
         for run in test_runs:
             test_run_data = normalized_test_data[test_model][run]
-            mse = calculate_mse(test_run_data, B_rrr, ground_truth)
+            mse = calculate_mse(test_run_data, B_rrr, ground_truth, testing_statistics, test_model)
             mse_losses[test_model].append(mse)
+
+        # Clear memory for the current test model
+        del B_rrr, normalized_train_data, normalized_test_data, X_train, Y_train, train_data, test_data
+        gc.collect()
+        log_memory_usage(f"After processing model {test_model}")
+    
+    gc.collect()
+    
+    # Save the metrics as pickle files if output_dir is provided
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Save mse_losses
+        method_name = "OLS_results" if use_ols_only else "RRR_results"
+        mse_losses_path = os.path.join(output_dir, f"{method_name}_final_mse_losses.pkl")
+        with open(mse_losses_path, 'wb') as f:
+            pickle.dump(mse_losses, f)
+        print(f"Saved final MSE losses at {mse_losses_path}", flush=True)
     
     return mse_losses
-
 
 def plot_final_mse_distribution(mse_losses, output_dir):
     """
@@ -363,10 +358,10 @@ def plot_final_mse_distribution(mse_losses, output_dir):
     plot_path = os.path.join(output_dir, "final_mse_distribution.png")
     plt.savefig(plot_path)
     plt.close()  # Close the plot to free memory
-    print(f"Saved final MSE distribution plot at {plot_path}")
+    print(f"Saved final MSE distribution plot at {plot_path}", flush = True)
     return None
 
-def generate_and_save_animations(data, test_model, best_rank, best_lambda, nan_mask, num_runs=3, output_dir="output", color_limits=(-2, 2), on_cluster=False):
+def generate_and_save_animations(data, test_model, best_rank, best_lambda, nan_mask, num_runs=3, output_dir="output", color_limits=(-2, 2), on_cluster=False, use_ols_only=False):
     """
     Generate and save animations for a specified test model, including predictions, input data, and ground truth.
     
@@ -393,7 +388,7 @@ def generate_and_save_animations(data, test_model, best_rank, best_lambda, nan_m
     X_train, Y_train = pool_data(normalized_train_data)
 
     # Perform reduced rank regression
-    B_rrr, _ = reduced_rank_regression(X_train, Y_train, rank=best_rank, lambda_=best_lambda)
+    B_rrr, _ = reduced_rank_regression(X_train, Y_train, rank=best_rank, lambda_=best_lambda, use_ols_only=use_ols_only)
 
     # Create the output directory for animations
     animation_output_dir = os.path.join(output_dir, "animations")
@@ -411,4 +406,4 @@ def generate_and_save_animations(data, test_model, best_rank, best_lambda, nan_m
         on_cluster=on_cluster
     )
 
-    print(f"Animations saved in {animation_output_dir}")
+    print(f"Animations saved in {animation_output_dir}", flush = True)
