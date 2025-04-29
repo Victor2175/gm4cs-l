@@ -120,9 +120,9 @@ def train_vae(model, data_loader, optimizer, epochs, device='cpu'):
     model.train()
     losses = []
 
-    for epoch in range(epochs):
+    for epoch in tqdm(range(epochs)):
         overall_loss = 0
-        for batch in tqdm(data_loader, desc=f"Epoch {epoch + 1}/{epochs}"):
+        for batch in data_loader:
             x = batch['input'].to(device)
             y = batch['output'].to(device)
 
