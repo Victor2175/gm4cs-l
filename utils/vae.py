@@ -95,12 +95,14 @@ class VAE(nn.Module):
     #     return z
 
     def decode(self, z):
+        print(f"Z shape: {z.shape}")
         return self.decoder(z)
 
     def forward(self, x):
         mean, logvar = self.encode(x)
         z = self.reparameterization(mean, logvar)
         x_hat = self.decode(z)
+        print(f"X_hat shape: {x_hat.shape}, mean shape: {mean.shape}, logvar shape: {logvar.shape}")
         return x_hat, mean, logvar
 
 # def initialize_weights(m):
