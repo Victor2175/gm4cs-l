@@ -6,44 +6,35 @@ from tqdm import tqdm
 
 
 class TrendLayer(nn.Module):
-    def __init__(self, seq_len, feat_dim, latent_dim, trend_poly):
+    def __init__(self, seq_len, feat_dim, z_dim, trend_poly):
         super(TrendLayer, self).__init__()
         self.seq_len = seq_len
         self.feat_dim = feat_dim
-        self.latent_dim = latent_dim
         self.trend_poly = trend_poly
 
         # Linear layers to estimate basis expansion coefficients θtr
-        self.trend_dense1 = nn.Linear(latent_dim, trend_poly)
-        self.trend_dense2 = nn.Linear(trend_poly, trend_poly)
+        self.trend_dense1 = nn.Linear(z_dim, self.feat_dim * self.trend_poly)
+        self.trend_dense2 = nn.Linear(self.feat_dim * self.trend_poly, self.feat_dim * self.trend_poly)
 
     def forward(self, z):
-        print(f"TrendLayer input z shape: {z.shape}")
 
         # Reshape z to (N * T, z_dim) for dense layers
         batch_size, seq_len, latent_dim = z.shape
-        print(f"TrendLayer reshaping z from (N, T, z_dim) to (N * T, z_dim): {z.shape}")
-        z = z.view(-1, latent_dim)  # Shape: (N * T, z_dim)
+        z = z.contiguous().view(batch_size * seq_len, latent_dim)  # Shape: (N * T, z_dim)
 
         # Estimate basis expansion coefficients θtr
-        trend_params = F.relu(self.trend_dense1(z))  # Shape: (N * T, trend_poly)
-        print(f"TrendLayer trend_params after dense1 shape: {trend_params.shape}")
-        trend_params = self.trend_dense2(trend_params)  # Shape: (N * T, trend_poly)
-        print(f"TrendLayer trend_params after dense2 shape: {trend_params.shape}")
+        trend_params = F.relu(self.trend_dense1(z))  # Shape: (N * T, feat_dim * trend_poly)
+        trend_params = self.trend_dense2(trend_params)  # Shape: (N * T, feat_dim * trend_poly)
 
-        # Reshape trend_params to (N, T, P)
-        trend_params = trend_params.view(batch_size, seq_len, self.trend_poly)  # Shape: (N, T, P)
-        print(f"TrendLayer trend_params reshaped to (N, T, P): {trend_params.shape}")
+        # Reshape trend_params to (N, T, D, P)
+        trend_params = trend_params.view(batch_size, seq_len, self.feat_dim, self.trend_poly)  # Shape: (N, T, D, P)
 
         # Compute the polynomial space R = [1, r, ..., r^p] where r = [0, 1, ..., T-1]/T
         lin_space = torch.arange(0, float(self.seq_len), 1, device=z.device) / self.seq_len
         poly_space = torch.stack([lin_space ** float(p) for p in range(self.trend_poly)], dim=0)  # Shape: (P, T)
-        print(f"TrendLayer poly_space shape: {poly_space.shape}")
 
         # Compute the trend Vtr = θtr @ R
-        trend_vals = torch.matmul(trend_params, poly_space)  # Shape: (N, T, T)
-        trend_vals = trend_vals.permute(0, 2, 1)  # Shape: (N, T, D)
-        print(f"TrendLayer output trend_vals shape: {trend_vals.shape}")
+        trend_vals = torch.einsum('ntdp,pt->ntd', trend_params, poly_space)  # Shape: (N, T, D)
         return trend_vals
 
 
@@ -84,7 +75,6 @@ class Trend_Vae(nn.Module):
             # print(f"Encoder layer output shape: {x.shape}")
         mean = self.mean_layer(x)
         var = self.var_layer(x)
-        print(f"Encoder output mean shape: {mean.shape}, var shape: {var.shape}")
         return mean.permute(0, 2, 1), var.permute(0, 2, 1)  # Change back to (N, T, z_dim)
 
     def reparameterization(self, mean, var):
@@ -99,11 +89,10 @@ class Trend_Vae(nn.Module):
             z = layer(z)
             # print(f"Decoder layer output shape: {z.shape}")
         x_hat = z.permute(0, 2, 1)  # Change back to (N, T, D)
-        print(f"SHAPE: {x_hat.shape}")
 
         # Compute trend component
-        # trend_vals = self.trend_layer(z_)  # Shape: (N, T, D)
-        return x_hat #+ trend_vals
+        trend_vals = self.trend_layer(z_)  # Shape: (N, T, D)
+        return x_hat + trend_vals
 
     def forward(self, x):
         mean, var = self.encode(x)
@@ -149,9 +138,9 @@ def train_vae(model, data_loader, optimizer, epochs, device='cpu'):
     model.train()
     losses = []
 
-    for epoch in range(epochs):
+    for epoch in tqdm(range(epochs)):
         overall_loss = 0
-        for batch in tqdm(data_loader, desc=f"Epoch {epoch + 1}/{epochs}"):
+        for batch in data_loader:
             x = batch['input'].to(device)  # Shape: (N, T, D)
             y = batch['output'].to(device)  # Shape: (N, T, D)
 
