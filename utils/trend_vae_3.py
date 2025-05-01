@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
@@ -210,8 +211,8 @@ class ClimateDataset(Dataset):
                     self.inputs.append(run_data)
                     self.outputs.append(forced_response)
 
-        self.inputs = torch.tensor(self.inputs, dtype=torch.float32)
-        self.outputs = torch.tensor(self.outputs, dtype=torch.float32)
+        self.inputs = torch.tensor(np.array(self.inputs), dtype=torch.float32)
+        self.outputs = torch.tensor(np.array(self.outputs), dtype=torch.float32)
 
     def __len__(self):
         return len(self.inputs)
