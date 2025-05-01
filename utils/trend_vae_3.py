@@ -189,6 +189,23 @@ class Trend_Vae(nn.Module):
         x_hat = self.decoder(z)
 
         return x_hat, mean, log_var
+    
+    def generate(self, num_samples):
+        """
+        Generate new data using random latent vectors.
+        Args:
+            num_samples (int): Number of samples to generate.
+        Returns:
+            torch.Tensor: Generated data of shape (num_samples, seq_len, feat_dim).
+        """
+        # Generate random latent vectors
+        latent_vectors = torch.randn((num_samples, self.z_dim)).to(self.device)
+
+        # Decode latent vectors to generate data
+        with torch.no_grad():
+            generated_data = self.decoder(latent_vectors)
+
+        return generated_data
 
 
 def vae_loss_function(x, x_hat, mean, var, beta=1):
