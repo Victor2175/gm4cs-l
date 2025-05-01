@@ -47,6 +47,22 @@ class LevelModel(nn.Module):
         level_vals = level_params * ones_tensor
         return level_vals
 
+class ResidualConnection(nn.Module):
+    def __init__(self, seq_len, feat_dim, latent_dim):
+        super(ResidualConnection, self).__init__()
+        self.seq_len = seq_len
+        self.feat_dim = feat_dim
+        self.latent_dim = latent_dim
+
+        # Fully connected layer to project latent space to residuals
+        self.fc = nn.Linear(latent_dim, seq_len * feat_dim)
+
+    def forward(self, z):
+        # Project latent space to residuals
+        residuals = self.fc(z)
+        # Reshape to match the output dimensions
+        return residuals.view(-1, self.seq_len, self.feat_dim)
+
 
 class TrendVAEEncoder(nn.Module):
     def __init__(self, seq_len, feat_dim, hidden_layer_sizes, latent_dim):
@@ -85,17 +101,24 @@ class TrendVAEEncoder(nn.Module):
 
 
 class TrendVAEDecoder(nn.Module):
-    def __init__(self, seq_len, feat_dim, hidden_layer_sizes, latent_dim, trend_poly=0):
+    def __init__(self, seq_len, feat_dim, hidden_layer_sizes, latent_dim, trend_poly=0, use_residual_conn=True):
         super(TrendVAEDecoder, self).__init__()
         self.seq_len = seq_len
         self.feat_dim = feat_dim
         self.hidden_layer_sizes = hidden_layer_sizes
         self.latent_dim = latent_dim
         self.trend_poly = trend_poly
+        self.use_residual_conn = use_residual_conn
 
+        # Level and Trend Layers
         self.level_model = LevelModel(latent_dim, feat_dim, seq_len)
         self.trend_layer = TrendLayer(seq_len, feat_dim, latent_dim, trend_poly)
 
+        # Residual Connection (optional)
+        if use_residual_conn:
+            self.residual_conn = ResidualConnection(seq_len, feat_dim, latent_dim)
+
+        # Convolutional Decoder
         layers = []
         layers.append(nn.Conv1d(latent_dim, hidden_layer_sizes[-1], kernel_size=3, stride=1, padding=1))
         layers.append(nn.ReLU())
@@ -107,17 +130,25 @@ class TrendVAEDecoder(nn.Module):
         self.decoder = nn.Sequential(*layers)
 
     def forward(self, z):
+        # Compute level and trend components
         level_vals = self.level_model(z)  # Shape: (batch_size, seq_len, feat_dim)
         trend_vals = self.trend_layer(z)  # Shape: (batch_size, seq_len, feat_dim)
+
+        # Compute residuals (if enabled)
+        residuals = 0
+        if self.use_residual_conn:
+            residuals = self.residual_conn(z)  # Shape: (batch_size, seq_len, feat_dim)
+
+        # Pass latent variable through convolutional decoder
         z = z.unsqueeze(2).repeat(1, 1, self.seq_len)  # Reshape to (batch_size, latent_dim, seq_len)
         x_hat = self.decoder(z)  # Shape: (batch_size, feat_dim, seq_len)
         x_hat = x_hat.permute(0, 2, 1)  # Change to (batch_size, seq_len, feat_dim)
 
-        return x_hat + level_vals + trend_vals
+        return x_hat + level_vals + trend_vals + residuals
 
 
 class Trend_Vae(nn.Module):
-    def __init__(self, seq_len, feat_dim, hidden_dim, latent_dim, z_dim, trend_poly=0, device='cpu'):
+    def __init__(self, seq_len, feat_dim, hidden_dim, latent_dim, z_dim, trend_poly=0, use_residual_conn=True, device='cpu'):
         super(Trend_Vae, self).__init__()
         self.device = device
         self.seq_len = seq_len
@@ -126,12 +157,20 @@ class Trend_Vae(nn.Module):
         self.latent_dim = latent_dim
         self.z_dim = z_dim
         self.trend_poly = trend_poly
+        self.use_residual_conn = use_residual_conn
 
         # Encoder
         self.encoder = TrendVAEEncoder(seq_len, feat_dim, [hidden_dim, latent_dim], z_dim)
 
         # Decoder
-        self.decoder = TrendVAEDecoder(seq_len, feat_dim, [latent_dim, hidden_dim], z_dim, trend_poly)
+        self.decoder = TrendVAEDecoder(
+            seq_len=seq_len,
+            feat_dim=feat_dim,
+            hidden_layer_sizes=[latent_dim, hidden_dim],
+            latent_dim=z_dim,
+            trend_poly=trend_poly,
+            use_residual_conn=use_residual_conn
+        )
 
     def reparameterization(self, mean, log_var):
         epsilon = torch.randn_like(log_var).to(self.device)
