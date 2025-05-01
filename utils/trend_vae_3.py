@@ -20,91 +20,135 @@ class TrendLayer(nn.Module):
         trend_params = self.trend_dense2(trend_params)
         trend_params = trend_params.view(-1, self.feat_dim, self.trend_poly)
 
-        lin_space = torch.arange(0, float(self.seq_len), 1, device=z.device) / self.seq_len 
-        poly_space = torch.stack([lin_space ** float(p + 1) for p in range(self.trend_poly)], dim=0) 
+        lin_space = torch.arange(0, float(self.seq_len), 1, device=z.device) / self.seq_len
+        poly_space = torch.stack([lin_space ** float(p + 1) for p in range(self.trend_poly)], dim=0)
 
-        trend_vals = torch.matmul(trend_params, poly_space) 
-        trend_vals = trend_vals.permute(0, 2, 1) 
+        trend_vals = torch.matmul(trend_params, poly_space)
+        trend_vals = trend_vals.permute(0, 2, 1)
         return trend_vals
 
 
-class Trend_Vae(nn.Module):
-    def __init__(self, seq_len, feat_dim, hidden_dim=50, latent_dim=64, z_dim=5, trend_poly=2, device='cpu'):
-        super(Trend_Vae, self).__init__()
+class LevelModel(nn.Module):
+    def __init__(self, latent_dim, feat_dim, seq_len):
+        super(LevelModel, self).__init__()
+        self.latent_dim = latent_dim
+        self.feat_dim = feat_dim
+        self.seq_len = seq_len
+        self.level_dense1 = nn.Linear(self.latent_dim, self.feat_dim)
+        self.level_dense2 = nn.Linear(self.feat_dim, self.feat_dim)
+        self.relu = nn.ReLU()
+
+    def forward(self, z):
+        level_params = self.relu(self.level_dense1(z))
+        level_params = self.level_dense2(level_params)
+        level_params = level_params.view(-1, 1, self.feat_dim)
+
+        ones_tensor = torch.ones((1, self.seq_len, 1), dtype=torch.float32, device=z.device)
+        level_vals = level_params * ones_tensor
+        return level_vals
+
+
+class TrendVAEEncoder(nn.Module):
+    def __init__(self, seq_len, feat_dim, hidden_layer_sizes, latent_dim):
+        super(TrendVAEEncoder, self).__init__()
         self.seq_len = seq_len
         self.feat_dim = feat_dim
+        self.latent_dim = latent_dim
+        self.hidden_layer_sizes = hidden_layer_sizes
+
+        layers = []
+        layers.append(nn.Conv1d(feat_dim, hidden_layer_sizes[0], kernel_size=3, stride=2, padding=1))
+        layers.append(nn.ReLU())
+        for i in range(1, len(hidden_layer_sizes)):
+            layers.append(nn.Conv1d(hidden_layer_sizes[i - 1], hidden_layer_sizes[i], kernel_size=3, stride=2, padding=1))
+            layers.append(nn.ReLU())
+        layers.append(nn.Flatten())
+
+        self.encoder = nn.Sequential(*layers)
+        self.encoder_last_dense_dim = self._get_last_dense_dim(seq_len, feat_dim, hidden_layer_sizes)
+        self.z_mean = nn.Linear(self.encoder_last_dense_dim, latent_dim)
+        self.z_log_var = nn.Linear(self.encoder_last_dense_dim, latent_dim)
+
+    def forward(self, x):
+        x = x.permute(0, 2, 1)  # Change to (batch_size, feat_dim, seq_len)
+        x = self.encoder(x)
+        z_mean = self.z_mean(x)
+        z_log_var = self.z_log_var(x)
+        return z_mean, z_log_var
+
+    def _get_last_dense_dim(self, seq_len, feat_dim, hidden_layer_sizes):
+        with torch.no_grad():
+            x = torch.randn(1, feat_dim, seq_len)
+            for layer in self.encoder:
+                x = layer(x)
+            return x.numel()
+
+
+class TrendVAEDecoder(nn.Module):
+    def __init__(self, seq_len, feat_dim, hidden_layer_sizes, latent_dim, trend_poly=0):
+        super(TrendVAEDecoder, self).__init__()
+        self.seq_len = seq_len
+        self.feat_dim = feat_dim
+        self.hidden_layer_sizes = hidden_layer_sizes
+        self.latent_dim = latent_dim
+        self.trend_poly = trend_poly
+
+        self.level_model = LevelModel(latent_dim, feat_dim, seq_len)
+        self.trend_layer = TrendLayer(seq_len, feat_dim, latent_dim, trend_poly)
+
+        layers = []
+        layers.append(nn.Conv1d(latent_dim, hidden_layer_sizes[-1], kernel_size=3, stride=1, padding=1))
+        layers.append(nn.ReLU())
+        for i in range(len(hidden_layer_sizes) - 1, 0, -1):
+            layers.append(nn.Conv1d(hidden_layer_sizes[i], hidden_layer_sizes[i - 1], kernel_size=3, stride=1, padding=1))
+            layers.append(nn.ReLU())
+        layers.append(nn.Conv1d(hidden_layer_sizes[0], feat_dim, kernel_size=3, stride=1, padding=1))
+
+        self.decoder = nn.Sequential(*layers)
+
+    def forward(self, z):
+        level_vals = self.level_model(z)  # Shape: (batch_size, seq_len, feat_dim)
+        trend_vals = self.trend_layer(z)  # Shape: (batch_size, seq_len, feat_dim)
+        z = z.unsqueeze(2).repeat(1, 1, self.seq_len)  # Reshape to (batch_size, latent_dim, seq_len)
+        x_hat = self.decoder(z)  # Shape: (batch_size, feat_dim, seq_len)
+        x_hat = x_hat.permute(0, 2, 1)  # Change to (batch_size, seq_len, feat_dim)
+
+        return x_hat + level_vals + trend_vals
+
+
+class Trend_Vae(nn.Module):
+    def __init__(self, seq_len, feat_dim, hidden_dim, latent_dim, z_dim, trend_poly=0, device='cpu'):
+        super(Trend_Vae, self).__init__()
         self.device = device
+        self.seq_len = seq_len
+        self.feat_dim = feat_dim
+        self.hidden_dim = hidden_dim
+        self.latent_dim = latent_dim
+        self.z_dim = z_dim
         self.trend_poly = trend_poly
 
         # Encoder
-        self.encoder = nn.Sequential(
-            nn.Conv1d(in_channels=feat_dim, out_channels=hidden_dim, kernel_size=3, stride=2, padding=1),
-            nn.ReLU(),
-            nn.Conv1d(in_channels=hidden_dim, out_channels=latent_dim, kernel_size=3, stride=2, padding=1),
-            nn.ReLU(),
-            nn.Flatten()  # Flatten to ensure output is (N, -1)
-        )
-        self.encoder_last_dense_dim = self._get_last_dense_dim(seq_len, feat_dim, hidden_dim, latent_dim)
-        self.mean_layer = nn.Linear(self.encoder_last_dense_dim, z_dim)
-        self.var_layer = nn.Linear(self.encoder_last_dense_dim, z_dim)
+        self.encoder = TrendVAEEncoder(seq_len, feat_dim, [hidden_dim, latent_dim], z_dim)
 
         # Decoder
-        self.decoder = nn.Sequential(
-            nn.Conv1d(in_channels=z_dim, out_channels=latent_dim, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-            nn.Conv1d(in_channels=latent_dim, out_channels=hidden_dim, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-            nn.Conv1d(in_channels=hidden_dim, out_channels=feat_dim, kernel_size=3, stride=1, padding=1)
-        )
+        self.decoder = TrendVAEDecoder(seq_len, feat_dim, [latent_dim, hidden_dim], z_dim, trend_poly)
 
-        # Trend Layer
-        self.trend_layer = TrendLayer(seq_len, feat_dim, z_dim, trend_poly)
-
-    def encode(self, x):
-        x = x.permute(0, 2, 1)  # Change to (N, D, T) for Conv1D
-        x = self.encoder(x)
-        mean = self.mean_layer(x)  # Shape: (N, z_dim)
-        var = self.var_layer(x)   # Shape: (N, z_dim)
-        return mean, var
-
-    def _get_last_dense_dim(self, seq_len, feat_dim, hidden_dim, latent_dim):
-        with torch.no_grad():
-            x = torch.randn(1, feat_dim, seq_len)
-            x = nn.Conv1d(in_channels=feat_dim, out_channels=hidden_dim, kernel_size=3, stride=2, padding=1)(x)
-            x = nn.Conv1d(in_channels=hidden_dim, out_channels=latent_dim, kernel_size=3, stride=2, padding=1)(x)
-            x = x.flatten(start_dim=1)  # Flatten to calculate the dense dimension
-            return x.size(1)
-
-    def encode(self, x):
-        x = x.permute(0, 2, 1)  # Change to (N, D, T) for Conv1D
-        for layer in self.encoder:
-            x = layer(x)
-        # print(f"Encoder layer output shape: {x.shape}")
-        mean = self.mean_layer(x)
-        var = self.var_layer(x)
-        return mean, var # Dimensions (N, z_dim)
-
-    def reparameterization(self, mean, var):
-        epsilon = torch.randn_like(var).to(self.device)
-        z = mean + var * epsilon
+    def reparameterization(self, mean, log_var):
+        epsilon = torch.randn_like(log_var).to(self.device)
+        z = mean + torch.exp(0.5 * log_var) * epsilon
         return z
 
-    def decode(self, z):
-        z_= z
-        for layer in self.decoder:
-            z = layer(z)
-            # print(f"Decoder layer output shape: {z.shape}")
-        x_hat = z.permute(0, 2, 1)  # Change back to (N, T, D)
-
-        # Compute trend component
-        trend_vals = self.trend_layer(z_)  # Shape: (N, T, D)
-        return x_hat + trend_vals
-
     def forward(self, x):
-        mean, var = self.encode(x)
-        z = self.reparameterization(mean, var) # Shape: (N, T, z_dim)
-        x_hat = self.decode(z)
-        return x_hat, mean, var
+        # Encode input to latent space
+        mean, log_var = self.encoder(x)
+
+        # Reparameterize to sample latent variable
+        z = self.reparameterization(mean, log_var)
+
+        # Decode latent variable to reconstruct input
+        x_hat = self.decoder(z)
+
+        return x_hat, mean, log_var
 
 
 def vae_loss_function(x, x_hat, mean, var, beta=1):
