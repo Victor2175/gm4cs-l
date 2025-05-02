@@ -141,7 +141,9 @@ class TrendVAEDecoder(nn.Module):
             residuals = self.residual_conn(z)  # Shape: (batch_size, seq_len, feat_dim)
 
         # Pass latent variable through convolutional decoder
-        z = z.unsqueeze(2).repeat(1, 1, self.seq_len)  # Reshape to (batch_size, latent_dim, seq_len)
+        # Z shape: (batch_size, latent_dim)
+        # z = z.unsqueeze(2).repeat(1, 1, self.seq_len)  # Reshape to (batch_size, latent_dim, seq_len)
+        z = z.unsqueeze(2).expand(-1, -1, self.seq_len)  # Expand to (batch_size, latent_dim, seq_len)
         x_hat = self.decoder(z)  # Shape: (batch_size, feat_dim, seq_len)
         x_hat = x_hat.permute(0, 2, 1)  # Change to (batch_size, seq_len, feat_dim)
 
