@@ -262,7 +262,7 @@ def train_vae(model, data_loader, optimizer, epochs, device='cpu'):
 
         avg_loss = overall_loss / len(data_loader.dataset)
         losses.append(avg_loss)
-        if epoch % 10 - 1 == 0:
+        if epoch % 100 - 1 == 0:
             print(f"Epoch {epoch + 1}, Loss: {avg_loss:.4f}")
 
     return losses
