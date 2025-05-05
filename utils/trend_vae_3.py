@@ -1,4 +1,5 @@
 import torch
+import os
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
@@ -268,3 +269,13 @@ def train_vae(model, data_loader, optimizer, epochs, device='cpu'):
             print(f"Epoch {epoch + 1}, Loss: {avg_loss:.4f}")
 
     return losses
+
+def save_model(model, path):
+    # If the directory does not exist, create it
+    if not os.path.exists(os.path.dirname(path)):
+        os.makedirs(os.path.dirname(path))
+    torch.save(model.state_dict(), path)
+    print(f"Model saved to {path}")
+    
+def load_model(model, path):
+    model.load_state_dict(torch.load(path))
