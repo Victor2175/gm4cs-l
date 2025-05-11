@@ -279,3 +279,38 @@ def save_model(model, path):
     
 def load_model(model, path):
     model.load_state_dict(torch.load(path))
+
+def generate_confidence_interval(model, input_tensor, num_samples=100, confidence=0.95):
+    """
+    Generate multiple predictions using the decoder of the Trend_Vae model
+    and calculate the confidence interval for the output.
+
+    Args:
+        model (Trend_Vae): The trained Trend_Vae model.
+        input_tensor (torch.Tensor): Input tensor to encode and decode.
+        num_samples (int): Number of samples to generate.
+        confidence (float): Confidence level for the interval (e.g., 0.95).
+
+    Returns:
+        tuple: Mean prediction, lower bound, and upper bound of the confidence interval.
+    """
+    model.eval()
+    with torch.no_grad():
+        # Encode the input to latent space
+        mean, log_var = model.encoder(input_tensor)
+        
+        # Generate multiple samples from the latent space
+        samples = []
+        for _ in range(num_samples):
+            z = model.reparameterization(mean, log_var)
+            decoded_output = model.decoder(z)
+            samples.append(decoded_output.cpu().numpy())
+
+        # Convert samples to a numpy array for statistical calculations
+        samples = np.array(samples)  # Shape: (num_samples, batch_size, seq_len, feat_dim)
+
+        # Calculate mean and confidence intervals
+        mean_prediction = np.mean(samples, axis=0)
+        lower_bound = np.percentile(samples, (1 - confidence) / 2 * 100, axis=0)
+        upper_bound = np.percentile(samples, (1 + confidence) / 2 * 100, axis=0)
+    return mean_prediction, lower_bound, upper_bound

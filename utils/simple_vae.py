@@ -5,6 +5,9 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+import numpy as np
+from utils.data_processing import readd_nans_to_grid
+from utils.animation import animate_data
 
 class ClimateDataset(Dataset):
     def __init__(self, data):
@@ -18,8 +21,8 @@ class ClimateDataset(Dataset):
                     self.inputs.append(run_data)
                     self.outputs.append(forced_response)
 
-        self.inputs = torch.tensor(self.inputs, dtype=torch.float32)
-        self.outputs = torch.tensor(self.outputs, dtype=torch.float32)
+        self.inputs = torch.tensor(np.array(self.inputs), dtype=torch.float32)
+        self.outputs = torch.tensor(np.array(self.outputs), dtype=torch.float32)
 
     def __len__(self):
         return len(self.inputs)
@@ -41,14 +44,20 @@ class SIMPLEVAE(nn.Module):
             self.feature_dim = input_dims[1]
             
         # Linear layer to map (N, T, D) -> (N, T, D')
-        self.encoder = nn.Linear(self.feature_dim, z_dim)
+        self.encoder = nn.Sequential(
+            nn.Linear(self.feature_dim, z_dim),
+            nn.ReLU()  # Added ReLU activation
+        )
 
         # Latent mean and log variance layers (changed from variance to logvar)
         self.mean_layer = nn.Linear(z_dim, z_dim)
         self.logvar_layer = nn.Linear(z_dim, z_dim)  # Changed from var_layer to logvar_layer
 
         # Linear layer to map (N, T, D') -> (N, T, D)
-        self.decoder = nn.Linear(z_dim, self.feature_dim)
+        self.decoder = nn.Sequential(
+            nn.Linear(z_dim, self.feature_dim),
+            nn.ReLU()  # Added ReLU activation
+        )
 
     def encode(self, x):
         # Map input to latent space
@@ -159,3 +168,51 @@ def save_model(model, path):
     
 def load_model(model, path):
     model.load_state_dict(torch.load(path))
+
+def generate_confidence_interval(model, input_tensor, num_samples=100, nan_mask=None, save_path=None):
+    """
+    Generate confidence intervals for predictions using the SIMPLEVAE model and create a video of the time evolution of the standard deviation.
+
+    Args:
+        model (SIMPLEVAE): The trained SIMPLEVAE model.
+        input_tensor (torch.Tensor): Input tensor for prediction.
+        num_samples (int): Number of samples to generate for CI calculation.
+        nan_mask (np.ndarray): Mask for reshaping data to grid format.
+        save_path (str): Path to save the video of standard deviation evolution.
+
+        Returns:
+        tuple: Mean prediction, lower bound, upper bound.
+    """
+    model.eval()
+    predictions = []
+
+    with torch.no_grad():
+        for _ in range(num_samples):
+            mean, logvar = model.encode(input_tensor)
+            z = model.reparameterization(mean, logvar)
+            pred = model.decode(z)
+            predictions.append(pred.cpu().numpy())
+
+    predictions = np.array(predictions)  # Shape: (num_samples, batch_size, seq_len, feat_dim)
+
+    # Calculate mean and confidence intervals
+    pred_mean = predictions.mean(axis=0)
+    pred_std = predictions.std(axis=0)
+    ci_lower = pred_mean - 1.96 * pred_std  # 95% CI lower bound
+    ci_upper = pred_mean + 1.96 * pred_std  # 95% CI upper bound
+
+    # Generate video of standard deviation evolution
+    if nan_mask is not None and save_path is not None:
+        std_data = readd_nans_to_grid(pred_std[0], nan_mask, predictions=True)
+        std_data = std_data.reshape(-1, nan_mask.shape[0], nan_mask.shape[1])
+
+        std_animation = animate_data(
+            std_data,
+            title='Time Evolution of Standard Deviation',
+            interval=200,
+            cmap='viridis',
+            color_limits=(std_data.min(), std_data.max())
+        )
+        std_animation.save(f"{save_path}/vae_std_evolution.mp4", writer='ffmpeg', fps=15)
+
+    return pred_mean, ci_lower, ci_upper
