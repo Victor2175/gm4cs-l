@@ -104,15 +104,23 @@ class SIMPLEVAE(nn.Module):
         
         return generated_data
 
-def vae_loss_function(x, x_hat, mean, logvar, beta=1):
+def vae_loss_function(x, x_hat, mean, logvar, beta=1, smoothness_weight=0.1):
     # Reconstruction loss (MSE)
     reproduction_loss = F.mse_loss(x_hat, x, reduction='sum')
-    
+
     # KL Divergence with a beta factor to control its influence
     # Using log variance for numerical stability
     KLD = -0.5 * torch.sum(1 + logvar - mean.pow(2) - torch.exp(logvar))
-    
-    return reproduction_loss + beta * KLD
+
+    # Temporal smoothness penalty: penalize large changes in predictions over time
+    smoothness_penalty = 0
+    if x_hat.dim() == 3:  # Ensure the input has temporal structure (batch_size, seq_len, feature_dim)
+        smoothness_penalty = torch.sum((x_hat[:, 1:, :] - x_hat[:, :-1, :]).pow(2))
+
+    # Combine losses
+    total_loss = reproduction_loss + beta * KLD + smoothness_weight * smoothness_penalty
+
+    return total_loss
 
 def train_vae(model, data_loader, optimizer, epochs, device='cpu'):
     model.to(device)
