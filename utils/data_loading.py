@@ -31,7 +31,7 @@ def filter_data(data, min_runs=4):
     """
     print("Filtering data...")
     filtered_data = {
-        model: {run: np.flip(data[model][run], axis=1) for run in data[model]}
+        model: {run: np.flip(data[model][run][:, 12:, :], axis=1) for run in data[model]}
         for model in tqdm(data.keys()) if len(data[model]) >= min_runs
     }
     print(f"Data filtered. Kept {len(filtered_data)} models")
