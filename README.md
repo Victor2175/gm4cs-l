@@ -31,3 +31,25 @@ gm4cs/
 ├── Harrison_Global_Warming_Project.pdf # Project report
 └── README.md # Project documentation
 ```
+
+## Usage
+
+### Train VAE Model with LOO Cross validation
+```bash
+python vae.py
+```
+### Train the RRR model with LOO Cross validation
+```bash
+python -u train_and_generate.py \
+  --data_path ./data \
+  --filename ssp585_time_series.pkl \
+  --output_dir ./outputs_rrr_2 \
+  --all_models \
+  --center \
+  --num_runs 4 \
+  --mean_weight 0.75 \
+  --variance_weight 0.25 \
+  --option 1 \
+  --normalise \
+  > logs_rrr_2.out 2>&1 &
+```
