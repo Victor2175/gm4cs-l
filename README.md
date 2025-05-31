@@ -5,8 +5,8 @@ This repository contains code for the semester project on generative modeling of
 
 ## Project Structure
 
-experiments/  
-├── MHD/  
+gm4cs/  
+├── archive/  # Old notebooks and code versions
 │   ├── .h5 files (experiment-specific target data)  
 ├── LFS/  
 │   ├── .h5 files (experiment-specific input data)  
