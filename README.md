@@ -7,12 +7,16 @@ This repository contains code for the semester project on generative modeling of
 gm4cs/  
 ├── data/  
 │   ├── ssp585.pkl
+
 ├── data/  
 │   ├── ssp585.pkl
+
 ├── data/  
 │   ├── ssp585.pkl
+
 ├── data/  
 │   ├── ssp585.pkl
+
 ├── data/  
 │   ├── ssp585.pkl
 ├── models/
