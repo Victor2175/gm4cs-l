@@ -10,8 +10,8 @@ gm4cs/
 
 ├── models/
 
-│   ├── trend_vae_model.pt
-│   ├── ssp585.pkl
+│   ├── trend_vae_model.pt # TEST
+│   ├── linear_vae_model.pt
 
 notebooks/  
 ├── Jupyter notebooks for testing and analysis, including results visualization and evaluation metrics.  
