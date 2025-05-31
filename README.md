@@ -6,6 +6,7 @@ This repository contains code for the semester project on generative modeling of
 ## Project Structure
 gm4cs/
 ├── archive/ # Old notebooks and code versions
+
 ├── data/
 │ └── ssp585_time_series.pkl # Main dataset (climate time series)
 ├── models/
