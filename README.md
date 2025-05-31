@@ -4,6 +4,7 @@ Generative Models for Climate Science (Semester Project)
 This repository contains code for the semester project on generative modeling of climate data.
 
 ## Project Structure
+```bash
 gm4cs/  
 ├── data/  
 │   ├── ssp585.pkl
