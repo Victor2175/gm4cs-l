@@ -4,7 +4,7 @@ Generative models for Climate science (semester project)
 This repo will enable to share the code of the semester project.
 
 ## Project Structure
-'''
+( ``` )
 gm4cs-1/
 ├── archive/                # Old notebooks and code versions
 ├── data/
@@ -29,4 +29,21 @@ gm4cs-1/
 ├── vae.py                  # Script to train the VAE
 ├── Harrison_Global_Warming_Project.pdf # Project report
 └── README.md               # Project documentation
-'''
+( ``` )
+
+To run the cross-validation with the VAE model run: 
+python vae.py
+
+To run the cross-validation for the RRR model and generate outputs:
+python -u train_and_generate.py \
+  --data_path ./data \
+  --filename ssp585_time_series.pkl \
+  --output_dir ./outputs_rrr_2 \
+  --all_models \
+  --center \
+  --num_runs 4 \
+  --mean_weight 0.75 \
+  --variance_weight 0.25 \
+  --option 1 \
+  --normalise \
+  > logs_rrr_2.out 2>&1 &
