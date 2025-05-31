@@ -1,40 +1,45 @@
 # gm4cs
-Generative models for Climate science (semester project)
+Generative Models for Climate Science (Semester Project)
 
-This repo will enable to share the code of the semester project.
+This repository contains code for the semester project on generative modeling of climate data.
 
 ## Project Structure
-( ``` )
-gm4cs-1/
-├── archive/                # Old notebooks and code versions
+```bash
+gm4cs/
+├── archive/ # Old notebooks and code versions
+
 ├── data/
-│   └── ssp585_time_series.pkl  # Main dataset (climate time series)
+│ └── ssp585_time_series.pkl # Main dataset (climate time series)
 ├── models/
-│   ├── trend_vae_model.pt        # VAE model for trend generation
-│   └── linear_vae_model.pt       # Trained VAE weights
-├── outputs_ols/            # Outputs from OLS regression
-├── outputs_rrr/            # Outputs from Reduced Rank Regression (RRR)
-├── utils/                  # Utility scripts
-│   ├── animation.py
-│   ├── data_loading.py
-│   ├── data_processing.py
-│   ├── metrics.py
-│   ├── regression.py
-│   ├── pipeline.py
-│   └── trend_vae.py
-├── RRR.ipynb               # Tutorial for Reduced Rank Regression
-├── VAE.ipynb               # Tutorial for VAE training and visualization
-├── Data_exploration.ipynb  # Data exploration notebook
-├── train_and_generate.py   # Main training script for RRR
-├── vae.py                  # Script to train the VAE
+│ ├── trend_vae_model.pt # VAE model for trend generation
+│ └── linear_vae_model.pt # Trained VAE weights
+├── outputs_ols/ # Outputs from OLS regression
+├── outputs_rrr/ # Outputs from Reduced Rank Regression (RRR)
+├── utils/ # Utility scripts
+│ ├── animation.py
+│ ├── data_loading.py
+│ ├── data_processing.py
+│ ├── metrics.py
+│ ├── regression.py
+│ ├── pipeline.py
+│ └── trend_vae.py
+├── RRR.ipynb # Tutorial for Reduced Rank Regression
+├── VAE.ipynb # Tutorial for VAE training and visualization
+├── Data_exploration.ipynb # Data exploration notebook
+├── train_and_generate.py # Main training script for RRR
+├── vae.py # Script to train the VAE
 ├── Harrison_Global_Warming_Project.pdf # Project report
-└── README.md               # Project documentation
-( ``` )
+└── README.md # Project documentation
+```
 
-To run the cross-validation with the VAE model run: 
+## Usage
+
+### Train VAE Model with LOO Cross validation
+```bash
 python vae.py
-
-To run the cross-validation for the RRR model and generate outputs:
+```
+### Train the RRR model with LOO Cross validation
+```bash
 python -u train_and_generate.py \
   --data_path ./data \
   --filename ssp585_time_series.pkl \
@@ -47,3 +52,4 @@ python -u train_and_generate.py \
   --option 1 \
   --normalise \
   > logs_rrr_2.out 2>&1 &
+```
