@@ -1,2 +1,3 @@
 /data
-/models
+models/linear_vae_model.pth
+Models/trend_vae_model.pth
