@@ -4,7 +4,7 @@ Generative models for Climate science (semester project)
 This repo will enable to share the code of the semester project.
 
 ## Project Structure
-( ``` )
+
 gm4cs-1/
 ├── archive/                # Old notebooks and code versions
 ├── data/
@@ -29,7 +29,6 @@ gm4cs-1/
 ├── vae.py                  # Script to train the VAE
 ├── Harrison_Global_Warming_Project.pdf # Project report
 └── README.md               # Project documentation
-( ``` )
 
 To run the cross-validation with the VAE model run: 
 python vae.py
