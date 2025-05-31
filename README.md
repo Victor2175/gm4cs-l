@@ -8,17 +8,6 @@ gm4cs/
 ├── data/  
 │   ├── ssp585.pkl
 
-├── data/  
-│   ├── ssp585.pkl
-
-├── data/  
-│   ├── ssp585.pkl
-
-├── data/  
-│   ├── ssp585.pkl
-
-├── data/  
-│   ├── ssp585.pkl
 ├── models/
 │   ├── trend_vae_model.pt
 │   ├── ssp585.pkl
