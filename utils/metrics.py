@@ -3,8 +3,9 @@ from scipy.sparse import issparse
 from numpy.linalg import matrix_rank
 from tqdm import tqdm
 import numpy as np
+import torch
 
-def calculate_mse(run_data, B_rrr, ground_truth, testing_statistics=None, model=None):
+def calculate_mse(run_data, B_rrr, ground_truth, testing_statistics=None, model=None, normalise=False):
     """
     Calculate the Mean Squared Error (MSE) for a single run of the test data.
     Args:
@@ -20,17 +21,17 @@ def calculate_mse(run_data, B_rrr, ground_truth, testing_statistics=None, model=
     # Compute the predicted response
     y_pred = run_data @ B_rrr
     
-    if testing_statistics and model and model in testing_statistics and 'std' in testing_statistics[model]:
+    if normalise and testing_statistics and model and model in testing_statistics and 'std' in testing_statistics[model]:
         # Calculate the normalized Mean Squared Error using the model-specific standard deviation
         normalized_diff = (y_pred - ground_truth) / testing_statistics[model]['std']
         mse = np.mean(normalized_diff ** 2)
-        print(f"The std for {model} is {testing_statistics[model]['std']}")
-        print(f"Mean Squared Error for {model}: {mse}")
-        print("NORMALISED MSE")
+        # print(f"The std for {model} is {testing_statistics[model]['std']}")
+        # print(f"Mean Squared Error for {model}: {mse}")
+        # print("NORMALISED MSE")
     else:
         # Calculate the standard Mean Squared Error
         mse = mean_squared_error(ground_truth, y_pred)
-        print("Normal MSE")
+        # print("Normal MSE")
     
     return mse
 
@@ -107,3 +108,55 @@ def sanity_check(B_rr, B_ols, rank, cross_validation = True):
         print(f"The rank of Bols is {rank_B_ols} and the rank of B_rr is {rank_B}.")
     
     return sparse and rank_B == rank
+
+def evaluate_vae(model, data_loader, device, testing_statistics=None):
+    """
+    Evaluate the VAE model by calculating the Mean Squared Error (MSE) for predictions.
+
+    Args:
+        model (torch.nn.Module): The VAE model to evaluate.
+        data_loader (torch.utils.data.DataLoader): DataLoader for the test dataset.
+        device (torch.device): The device to run the evaluation on (CPU or GPU).
+        testing_statistics (dict, optional): Dictionary containing model-specific statistics with 'std' for each test model.
+
+    Returns:
+        dict: A dictionary containing both standard and normalized MSE values.
+    """
+    model.eval()  # Set the model to evaluation mode
+    mse_scores = []
+    normalized_mse_scores = []
+
+    with torch.no_grad():  # Disable gradient computation
+        for batch in data_loader:
+            inputs = batch['input'].to(device)
+            outputs = batch['output'].to(device)
+
+            # Forward pass through the model
+            reconstructed, _, _ = model(inputs)
+
+            # Reshape tensors to 2D for MSE calculation
+            prediction = reconstructed.cpu().numpy().reshape(reconstructed.shape[0], -1)
+            target = outputs.cpu().numpy().reshape(outputs.shape[0], -1)
+
+            # Calculate standard MSE for the batch
+            batch_mse = mean_squared_error(target, prediction)
+            mse_scores.append(batch_mse)
+
+            # Calculate normalized MSE if testing_statistics is provided
+            if testing_statistics:
+                model_name = batch.get('model_name', None)  # Assuming batch contains model_name
+                if model_name in testing_statistics and 'std' in testing_statistics[model_name]:
+                    print(f"Calculating normalized MSE for model: {model_name}")
+                    std = testing_statistics[model_name]['std']
+                    normalized_diff = (prediction - target) / std
+                    batch_normalized_mse = np.mean(normalized_diff ** 2)
+                    normalized_mse_scores.append(batch_normalized_mse)
+
+    # Calculate the average MSE and normalized MSE across all batches
+    average_mse = np.mean(mse_scores)
+    average_normalized_mse = np.mean(normalized_mse_scores) if normalized_mse_scores else None
+
+    return {
+        'mse': average_mse,
+        'normalized_mse': average_normalized_mse
+    }

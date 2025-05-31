@@ -31,8 +31,12 @@ def filter_data(data, min_runs=4):
     """
     print("Filtering data...")
     filtered_data = {
-        model: {run: np.flip(data[model][run][:, 12:, :], axis=1) for run in data[model]}
+        model: {run: np.flip(data[model][run], axis=1)[:, 12:, :] for run in data[model]} # Skip the first 5 lines which cause Large MSE Values!
         for model in tqdm(data.keys()) if len(data[model]) >= min_runs
     }
+    first_model = list(filtered_data.keys())[0]
+    first_run = list(filtered_data[first_model].keys())[0]
+    print(first_model, first_run, flush = True)
+    print(f"Data has shape: {filtered_data[first_model][first_run].shape}")
     print(f"Data filtered. Kept {len(filtered_data)} models")
     return filtered_data

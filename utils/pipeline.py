@@ -53,7 +53,7 @@ def log_memory_usage(message=""):
     mem_info = process.memory_info()
     print(f"{message} - Memory usage: {mem_info.rss / 1024 ** 2:.2f} MB (RSS)", flush=True)
 
-def loo_cross_validation(data, lambdas, ranks, center=True, use_ols_only=False, output_dir=None):
+def loo_cross_validation(data, lambdas, ranks, center=True, use_ols_only=False, output_dir=None, normalise=False, option=1):
     models = list(data.keys())
     mse_distribution = {model: {rank: {lambda_: [] for lambda_ in lambdas} for rank in ranks} for model in models}
     mse_by_combination = {(rank, lambda_): [] for rank in ranks for lambda_ in lambdas}
@@ -66,7 +66,7 @@ def loo_cross_validation(data, lambdas, ranks, center=True, use_ols_only=False, 
         test_data = {test_model: data[test_model]}
 
         # Normalize the data
-        normalized_train_data, normalized_test_data, _, testing_statistics = normalize_data(train_data, test_data, center=center)
+        normalized_train_data, normalized_test_data, _, testing_statistics = normalize_data(train_data, test_data, center=center, option=option)
         log_memory_usage(f"After normalization for model {test_model}")
 
         # Pool the training data
@@ -84,7 +84,7 @@ def loo_cross_validation(data, lambdas, ranks, center=True, use_ols_only=False, 
                 ground_truth = normalized_test_data[test_model]['forced_response']
                 for run in test_runs:
                     test_run_data = normalized_test_data[test_model][run]
-                    mse = calculate_mse(test_run_data, B_rrr, ground_truth, testing_statistics, test_model)
+                    mse = calculate_mse(test_run_data, B_rrr, ground_truth, testing_statistics, test_model, normalise)
                     mse_distribution[test_model][rank][lambda_].append(mse)
                     mse_by_combination[(rank, lambda_)].append(mse)
                 # Clear memory for the current test model
@@ -241,7 +241,7 @@ def plot_mse_distributions_per_model(mse_distributions, models, output_dir):
     return None
 
 
-def final_cross_validation(data, best_rank, best_lambda, use_ols_only=False, output_dir=None):
+def final_cross_validation(data, best_rank, best_lambda, use_ols_only=False, output_dir=None, normalise=False, center=True, option=1):
     """
     Perform a final round of cross-validation using the best rank and lambda.
     
@@ -266,7 +266,7 @@ def final_cross_validation(data, best_rank, best_lambda, use_ols_only=False, out
         test_data = {test_model: data[test_model]}
 
         # Normalize the data
-        normalized_train_data, normalized_test_data, _, testing_statistics = normalize_data(train_data, test_data)
+        normalized_train_data, normalized_test_data, _, testing_statistics = normalize_data(train_data, test_data, center=center, option=option)
         log_memory_usage(f"After normalization for model {test_model}")
 
         # Pool the training data
@@ -283,7 +283,7 @@ def final_cross_validation(data, best_rank, best_lambda, use_ols_only=False, out
         
         for run in test_runs:
             test_run_data = normalized_test_data[test_model][run]
-            mse = calculate_mse(test_run_data, B_rrr, ground_truth, testing_statistics, test_model)
+            mse = calculate_mse(test_run_data, B_rrr, ground_truth, testing_statistics, test_model, normalise)
             mse_losses[test_model].append(mse)
 
         # Clear memory for the current test model
@@ -361,7 +361,7 @@ def plot_final_mse_distribution(mse_losses, output_dir):
     print(f"Saved final MSE distribution plot at {plot_path}", flush = True)
     return None
 
-def generate_and_save_animations(data, test_model, best_rank, best_lambda, nan_mask, num_runs=3, output_dir="output", color_limits=(-2, 2), on_cluster=False, use_ols_only=False):
+def generate_and_save_animations(data, test_model, best_rank, best_lambda, nan_mask, num_runs=3, output_dir="output", color_limits=(-2, 2), on_cluster=False, use_ols_only=False, center=True, option=1, normalise=True):
     """
     Generate and save animations for a specified test model, including predictions, input data, and ground truth.
     
@@ -382,7 +382,7 @@ def generate_and_save_animations(data, test_model, best_rank, best_lambda, nan_m
     test_data = {test_model: data[test_model]}
 
     # Normalize the data
-    normalized_train_data, normalized_test_data, _, _ = normalize_data(train_data, test_data)
+    normalized_train_data, normalized_test_data, _, testing_statistics = normalize_data(train_data, test_data, center=center, option=option)
 
     # Pool the training data
     X_train, Y_train = pool_data(normalized_train_data)
@@ -403,7 +403,9 @@ def generate_and_save_animations(data, test_model, best_rank, best_lambda, nan_m
         num_runs=num_runs,
         color_limits=color_limits,
         save_path=animation_output_dir,
-        on_cluster=on_cluster
+        on_cluster=on_cluster,
+        normalise=normalise,
+        testing_statistics=testing_statistics
     )
 
     print(f"Animations saved in {animation_output_dir}", flush = True)
